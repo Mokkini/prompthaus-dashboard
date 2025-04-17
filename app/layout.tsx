@@ -1,8 +1,9 @@
 // app/layout.tsx
 import AuthButton from '../components/AuthButton'; // Pfad prüfen!
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google"; // Korrigierter Importname für Geist Sans
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ThemeProvider } from "@/components/ThemeProvider"; // ThemeProvider importieren
 
 // Korrekter Aufruf für Geist Sans Variable
 const geistSans = Geist({
@@ -16,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PromptHaus Dashboard", // Titel angepasst
-  description: "Verwaltung deiner Prompts", // Beschreibung angepasst
+  title: "PromptHaus Dashboard",
+  description: "Verwaltung deiner Prompts",
 };
 
 export default function RootLayout({
@@ -26,20 +27,27 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // Sprache auf Deutsch gesetzt
-    <html lang="de">
+    <html lang="de" suppressHydrationWarning>
+      <head />
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {/* Einfache Navigationsleiste hinzugefügt */}
-        <nav style={{ padding: '10px 20px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <div style={{ fontWeight: 'bold' }}>PromptHaus</div> {/* Beispiel Logo/Titel */}
-          <AuthButton /> {/* HIER WIRD DER BUTTON EINGEFÜGT */}
-        </nav>
-        {/* Hauptinhalt mit etwas Abstand */}
-        <main style={{ padding: '0 20px' }}>
-          {children}
-        </main>
+        <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+          {/* Deine bestehende Navigation */}
+          <nav style={{ padding: '10px 20px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div style={{ fontWeight: 'bold' }}>PromptHaus</div>
+            <AuthButton />
+          </nav>
+          {/* Dein Hauptinhalt */}
+          <main style={{ padding: '0 20px' }}>
+            {children}
+          </main>
+        </ThemeProvider>
       </body>
     </html>
   );

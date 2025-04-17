@@ -1,120 +1,108 @@
-// app/api/generate/route.js
+// app/api/generate/route.js - Mit System Prompt & Parametern
 
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
-// NUR den einfachen Client importieren
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js'; // Nur diesen Client hier
 
-// Supabase Client einfach initialisieren (Top-Level)
-// Verwende die korrekten Env-Variablen (URL ist jetzt NEXT_PUBLIC_...)
+// Supabase Client (Service Role)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
-  // Kein Cookie-Handling hier nötig für Service Role Key in dieser Route
 );
 
-// OpenAI Client initialisieren
+// OpenAI Client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Definiere das zu verwendende OpenAI-Modell
-const OPENAI_MODEL = 'gpt-4o-mini';
+// OpenAI Modell und Parameter
+const OPENAI_MODEL = 'gpt-4o-mini'; // Oder ein anderes Modell deiner Wahl
+const DEFAULT_TEMPERATURE = 0.7;
+const DEFAULT_MAX_TOKENS = 1500; // Passe dies nach Bedarf an
 
 export async function POST(request) {
   console.log("API route /api/generate wurde aufgerufen.");
 
-  // KEINE Client-Initialisierung mehr hier drin!
-
   try {
-    // 1. Anfragedaten (Body) lesen
+    // 1. Anfragedaten lesen (unverändert)
     const body = await request.json();
     const { promptPackageSlug, variantIndex, placeholders } = body;
-
     if (!promptPackageSlug || typeof variantIndex !== 'number' || variantIndex < 0 || !placeholders || typeof placeholders !== 'object') {
-      console.error("Ungültige oder fehlende Eingabedaten:", body);
-      return NextResponse.json({ error: 'Ungültige oder fehlende Eingabedaten: promptPackageSlug (string), variantIndex (number >= 0) und placeholders (object) sind erforderlich.' }, { status: 400 });
+       return NextResponse.json({ error: 'Ungültige Eingabedaten.' }, { status: 400 });
     }
+    console.log("Empfangene Daten:", { promptPackageSlug, variantIndex }); // Logge Platzhalter nicht unbedingt komplett
 
-    console.log("Empfangene Daten:", { promptPackageSlug, variantIndex, placeholders });
-
-    // 2. Prompt-Template von Supabase holen (verwendet den oben initialisierten 'supabase' Client)
+    // 2. Prompt-Template von Supabase holen (unverändert)
     console.log(`Suche Prompt-Paket mit Slug: ${promptPackageSlug}`);
     const { data: packageData, error: packageError } = await supabase
-      .from('prompt_packages')
-      .select('prompt_variants')
-      .eq('slug', promptPackageSlug)
-      .single();
+      .from('prompt_packages').select('prompt_variants').eq('slug', promptPackageSlug).single();
 
-    if (packageError) {
-      console.error("Supabase Fehler beim Holen des Pakets:", packageError);
-      if (packageError.code === 'PGRST116') {
-         return NextResponse.json({ error: `Prompt-Paket mit Slug '${promptPackageSlug}' nicht gefunden.` }, { status: 404 });
-      }
-      return NextResponse.json({ error: 'Datenbankfehler beim Holen des Prompt-Pakets.' }, { status: 500 });
-    }
-
-    if (!packageData || !packageData.prompt_variants) {
-         console.error("Keine prompt_variants im Paket gefunden:", packageData);
-         return NextResponse.json({ error: 'Prompt-Paket gefunden, aber keine Varianten enthalten.' }, { status: 500 });
+    if (packageError || !packageData || !packageData.prompt_variants) {
+        // ... Fehlerbehandlung für Paket/Varianten wie vorher ...
+        const status = packageError?.code === 'PGRST116' ? 404 : 500;
+        const message = packageError?.code === 'PGRST116' ? `Paket '${promptPackageSlug}' nicht gefunden.` : 'DB Fehler beim Holen des Pakets/Varianten.';
+        console.error("Supabase Fehler:", packageError || "Keine Varianten gefunden");
+        return NextResponse.json({ error: message }, { status });
     }
 
     const variants = packageData.prompt_variants;
-    console.log(`Paket gefunden, ${variants.length} Varianten enthalten.`);
-
-    if (variantIndex >= variants.length) {
-        console.error(`Ungültiger variantIndex ${variantIndex} für ${variants.length} Varianten.`);
-        return NextResponse.json({ error: `Ungültiger variantIndex. Es gibt nur ${variants.length} Varianten (Index 0 bis ${variants.length - 1}).` }, { status: 400 });
+    if (!Array.isArray(variants) || variantIndex >= variants.length) { // Prüfe ob Array
+        console.error("Ungültiger variantIndex oder Varianten kein Array:", variantIndex, variants);
+        return NextResponse.json({ error: 'Ungültiger variantIndex oder Variantenformat.' }, { status: 400 });
     }
 
     const selectedVariant = variants[variantIndex];
     const templateString = selectedVariant.template;
-
     if (!templateString) {
-         console.error("Ausgewählte Variante hat kein Template-Feld:", selectedVariant);
-         return NextResponse.json({ error: 'Ausgewählte Prompt-Variante hat kein Template.' }, { status: 500 });
+         console.error("Leeres Template in Variante:", selectedVariant);
+         return NextResponse.json({ error: 'Ausgewählte Variante hat kein Template.' }, { status: 500 });
     }
-
     console.log(`Template für Variante ${variantIndex} ausgewählt.`);
 
-    // 3. Platzhalter im Template ersetzen
+    // 3. Platzhalter ersetzen (unverändert)
     let filledTemplate = templateString;
     for (const key in placeholders) {
-      if (Object.hasOwnProperty.call(placeholders, key)) {
         const placeholderToReplace = `{{${key}}}`;
-        const value = String(placeholders[key]);
+        const value = String(placeholders[key]); // Sicherstellen, dass es ein String ist
         filledTemplate = filledTemplate.split(placeholderToReplace).join(value);
-      }
     }
-    console.log("Fertig befülltes Template wird an OpenAI gesendet.");
+    console.log("Fertig befülltes Template (User Prompt) erstellt.");
 
-    // 4. OpenAI API aufrufen
+
+    // 4. OpenAI API aufrufen - *** JETZT MIT SYSTEM PROMPT & PARAMETERN ***
     console.log(`Rufe OpenAI API mit Modell ${OPENAI_MODEL} auf...`);
+
+    // *** NEU: Definiere hier deinen System Prompt! ***
+    // NEUER System Prompt - Erlaubt mehr Anpassung
+const systemPrompt = "Du bist ein hilfreicher Assistent. Nutze die folgende Vorlage und die vom Benutzer eingegebenen Platzhalter als Basis, um einen passenden und ansprechenden Text zu generieren. Passe Stil und Formulierung gerne kreativ und sinnvoll an den jeweiligen Kontext an, um das bestmögliche Ergebnis zu erzielen.";
+    // Optional: Hole System Prompt aus packageData oder selectedVariant, falls du das später einbaust.
+
     const completion = await openai.chat.completions.create({
       model: OPENAI_MODEL,
-      messages: [{ role: 'user', content: filledTemplate }],
+      messages: [
+        { role: 'system', content: systemPrompt }, // <-- System Nachricht hinzugefügt!
+        { role: 'user', content: filledTemplate }   // <-- Der eigentliche Prompt
+      ],
+      temperature: DEFAULT_TEMPERATURE,     // <-- Temperatur hinzugefügt
+      max_tokens: DEFAULT_MAX_TOKENS,       // <-- Max Tokens hinzugefügt
+      // weitere Parameter wie top_p, presence_penalty etc. hier möglich
     });
 
-    // 5. Ergebnis von OpenAI extrahieren und zurückgeben
+    // 5. Ergebnis extrahieren und zurückgeben (unverändert)
     const aiResponseContent = completion.choices?.[0]?.message?.content;
-
     if (!aiResponseContent) {
-      console.error("Konnte keine gültige Antwort von OpenAI extrahieren:", completion);
-      return NextResponse.json({ error: 'Konnte keine gültige Antwort von OpenAI erhalten.' }, { status: 500 });
+         console.error("Keine gültige Antwort von OpenAI extrahiert:", completion);
+         return NextResponse.json({ error: 'Konnte keine gültige Antwort von OpenAI erhalten.' }, { status: 500 });
     }
-
     console.log("Antwort von OpenAI erfolgreich erhalten.");
     return NextResponse.json({ generatedText: aiResponseContent.trim() });
 
   } catch (error) {
-    console.error("Schwerwiegender Fehler in /api/generate:", error);
-    if (error.response) {
-      console.error("OpenAI API Fehler Status:", error.response.status);
-      console.error("OpenAI API Fehler Daten:", error.response.data);
-      return NextResponse.json({ error: `OpenAI API Fehler: ${error.response.statusText || 'Unbekannt'}` }, { status: error.response.status || 500 });
-    } else if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: 'Ungültiges JSON im Request Body.' }, { status: 400 });
-    }
-    return NextResponse.json({ error: 'Interner Serverfehler beim Verarbeiten der Anfrage.' }, { status: 500 });
+     // Fehlerbehandlung (unverändert)
+     console.error("Schwerwiegender Fehler in /api/generate:", error);
+     // ... (restliche Fehlerbehandlung wie vorher) ...
+      if (error.response) { /* OpenAI API Fehler */ return NextResponse.json({ error: `OpenAI API Fehler: ${error.response.statusText || 'Unbekannt'}` }, { status: error.response.status || 500 });}
+      if (error instanceof SyntaxError) { /* JSON Fehler */ return NextResponse.json({ error: 'Ungültiges JSON im Request Body.' }, { status: 400 }); }
+      return NextResponse.json({ error: `Interner Serverfehler: ${error.message}` }, { status: 500 }); // Gib mehr Details zurück
   }
 }
