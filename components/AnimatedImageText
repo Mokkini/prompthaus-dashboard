@@ -1,0 +1,40 @@
+'use client'
+
+import { motion } from 'framer-motion';
+import Image from 'next/image';
+
+export default function AnimatedImageText() {
+  return (
+    <section className="py-16 md:py-24 bg-background">
+      <div className="container mx-auto px-4 flex flex-col md:flex-row items-center gap-12">
+        <motion.div
+          initial={{ opacity: 0, x: -40 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6 }}
+          viewport={{ once: true }}
+          className="md:w-1/2 w-full"
+        >
+          <Image
+            src="/images/prompt-dashboard.jpg"
+            alt="Einblick ins PromptHaus Dashboard"
+            width={600}
+            height={400}
+            className="rounded-lg shadow-lg object-cover w-full"
+          />
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, x: 40 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6 }}
+          viewport={{ once: true }}
+          className="md:w-1/2 w-full text-center md:text-left"
+        >
+          <h2 className="text-3xl font-bold mb-4">Was ist PromptHaus?</h2>
+          <p className="text-muted-foreground text-lg">
+            PromptHaus bietet dir professionelle Textvorlagen für echte Alltagssituationen – ob WhatsApp, Social Media oder formelle Schreiben. Kein Fachwissen nötig, keine Installation – du nutzt alles direkt über dein persönliches Dashboard.
+          </p>
+        </motion.div>
+      </div>
+    </section>
+  );
+}

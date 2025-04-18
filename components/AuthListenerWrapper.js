@@ -1,67 +1,77 @@
-// components/AuthListenerWrapper.js (oder .js)
-'use client'; // Diese Komponente MUSS ein Client Component sein
+// components/AuthListenerWrapper.js
+"use client";
 
-import React, { useEffect } from 'react'; // Import React für TSX/JSX
-import { createClient } from '@/lib/supabase/client'; // Pfad zu Ihrem Client-Supabase prüfen!
+import React, { useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
-// Keine TypeScript Props-Definition nötig
-const AuthListenerWrapper = ({ children }) => { // Keine Typisierung
+const AuthListenerWrapper = ({ children }) => {
   const supabase = createClient();
   const router = useRouter();
 
   useEffect(() => {
-    console.log('[AuthListener] Listener wird eingerichtet...'); // Log: Listener Start
+    console.log('[AuthListener] Listener wird eingerichtet...');
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      const timestamp = new Date().toISOString(); // Zeitstempel für Reihenfolge
-      console.log(`[AuthListener ${timestamp}] Event: ${event}`); // Log: Welches Event?
-      console.log(`[AuthListener ${timestamp}] Session vorhanden: ${!!session}`); // Log: Session da (true/false)?
+      const timestamp = new Date().toISOString();
+      console.log(`[AuthListener ${timestamp}] Event: ${event}`);
+      console.log(`[AuthListener ${timestamp}] Session vorhanden: ${!!session}`);
+      const currentPath = window.location.pathname;
+      console.log(`[AuthListener ${timestamp}] Aktueller Pfad: ${currentPath}`);
 
-      if (event === 'PASSWORD_RECOVERY') {
-        console.log(`[AuthListener ${timestamp}] --> PASSWORD_RECOVERY erkannt! Session vorhanden: ${!!session}`);
-        if (session) {
-            console.log(`[AuthListener ${timestamp}] --> Session gültig, versuche Weiterleitung zu /set-password...`);
-            router.push('/set-password');
-        } else {
-            // Dieser Fall sollte eigentlich nicht eintreten, wenn das Event kommt
-            console.error(`[AuthListener ${timestamp}] --> KRITISCH: PASSWORD_RECOVERY Event OHNE Session! Redirect URLs etc. prüfen!`);
-        }
-      } else if (event === 'SIGNED_IN') {
-          console.log(`[AuthListener ${timestamp}] --> SIGNED_IN erkannt.`);
-          // Hier könnten Sie prüfen, ob der Nutzer vielleicht schon auf set-password ist o.ä.
-      } else if (event === 'INITIAL_SESSION' && !session) { // Speziell auf INITIAL_SESSION OHNE Session prüfen
-          console.log(`[AuthListener ${timestamp}] --> INITIAL_SESSION mit null session erkannt. Prüfe Session erneut nach 1 Sekunde...`);
-          // --- START: setTimeout Check für Diagnose ---
-          setTimeout(async () => {
-              const { data: delayedData, error: delayedError } = await supabase.auth.getSession(); // Session explizit abrufen
-              const delayedTimestamp = new Date().toISOString();
-              // Logge das Ergebnis des verzögerten Abrufs
-              console.log(`[AuthListener ${delayedTimestamp}] Verzögertes getSession Ergebnis:`, { session: delayedData?.session, error: delayedError });
-              // Wenn hier eine Session gefunden wird, ist das ein Hinweis auf ein Timing-Problem mit onAuthStateChange
-              if (delayedData?.session && window.location.hash.includes('type=invite')) { // Nur relevant, wenn der Invite-Hash noch da ist (optional)
-                 console.warn(`[AuthListener ${delayedTimestamp}] --> Session wurde nach Verzögerung gefunden! onAuthStateChange scheint unzuverlässig für Invite-Token mit SSR-Client.`);
-                 // Hier KEINEN automatischen Redirect einbauen, dient nur der Diagnose!
-              }
-          }, 1000); // Warte 1 Sekunde
-          // --- END: setTimeout Check ---
-      } else if (event === 'INITIAL_SESSION' && session) {
-          // Falls INITIAL_SESSION doch mal direkt mit Session kommt
-          console.log(`[AuthListener ${timestamp}] --> INITIAL_SESSION erkannt (mit Session).`);
-      } else if (event === 'SIGNED_OUT') {
-           console.log(`[AuthListener ${timestamp}] --> SIGNED_OUT erkannt.`);
-      } else {
-           console.log(`[AuthListener ${timestamp}] --> Anderes Event: ${event}`);
+      // Logge Metadaten, wenn vorhanden
+      if (session?.user?.user_metadata) {
+        console.log(
+          `[AuthListener ${timestamp}] Session User Metadata:`,
+          JSON.stringify(session.user.user_metadata, null, 2)
+        );
+      } else if (session?.user) {
+        console.log(
+          `[AuthListener ${timestamp}] Session User vorhanden, aber user_metadata ist leer/nicht vorhanden.`
+        );
+      }
+
+      // Nur bei echtem Sign-In oder INITIAL_SESSION weiterleiten
+      const needsPasswordSetup = session?.user?.user_metadata?.needs_password_setup;
+      if (
+        (event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && session)) &&
+        needsPasswordSetup === true &&
+        currentPath !== '/passwort-festlegen'
+      ) {
+        console.log(
+          `[AuthListener ${timestamp}] --> needs_password_setup=true (Event: ${event}), leite zu /passwort-festlegen um...`
+        );
+        router.replace('/passwort-festlegen');
+      }
+      // Wenn wir bereits auf der richtigen Seite sind
+      else if (
+        (event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && session)) &&
+        needsPasswordSetup === true &&
+        currentPath === '/passwort-festlegen'
+      ) {
+        console.log(
+          `[AuthListener ${timestamp}] --> Flag ist true, aber wir sind bereits auf /passwort-festlegen. (Event: ${event})`
+        );
+      }
+      // Session ohne gesetztes Flag
+      else if (session && !needsPasswordSetup) {
+        console.log(
+          `[AuthListener ${timestamp}] --> Session vorhanden, aber Flag nicht gesetzt/false. (Event: ${event})`
+        );
+      }
+      // Sign‑Out
+      else if (event === 'SIGNED_OUT') {
+        console.log(`[AuthListener ${timestamp}] --> SIGNED_OUT erkannt.`);
       }
     });
 
+    // Aufräumen bei Unmount
     return () => {
-      console.log('[AuthListener] Listener wird entfernt...'); // Log: Listener Ende
+      console.log('[AuthListener] Listener wird entfernt...');
       subscription.unsubscribe();
     };
-  }, [supabase, router]); // Abhängigkeiten für useEffect
+  }, [supabase, router]);
 
-  // Gebe einfach die Kinder (den Rest der App) zurück
   return <>{children}</>;
 };
 
