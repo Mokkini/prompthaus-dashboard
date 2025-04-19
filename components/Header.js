@@ -1,6 +1,7 @@
-// components/Header.js - Korrigiert für React.Children.only Fehler
+// components/Header.js - Mit Logo im mobilen Menü
 
 import Link from 'next/link';
+import Image from 'next/image'; // Image importieren
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,7 +16,7 @@ import { User, LogOut, Menu, Home } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import DashboardNav from './DashboardNav';
-import { cn } from '@/lib/utils'; // Importiere cn für Klassen
+import { cn } from '@/lib/utils';
 
 // Die Komponente akzeptiert jetzt den 'user' als Prop
 export default function Header({ user }) {
@@ -39,16 +40,28 @@ export default function Header({ user }) {
               <span className="sr-only">Menü öffnen</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 flex flex-col">
+          <SheetContent side="left" className="p-0 flex flex-col bg-background"> {/* Hintergrund explizit setzen */}
+             {/* --- NEU: Logo im Sheet Header --- */}
              <div className="p-4 border-b">
-               <h2 className="text-lg font-semibold">PromptHaus Menü</h2>
+                <Link href="/" aria-label="Zur PromptHaus Startseite">
+                    <Image
+                        src="/prompthaus-logo.png" // Pfad zum Logo
+                        alt="PromptHaus Logo"
+                        width={128} // Breite anpassen
+                        height={32} // Höhe anpassen
+                        priority
+                    />
+                </Link>
+                {/* Optional: Den Titel "PromptHaus Menü" entfernen oder anpassen */}
+                {/* <h2 className="text-lg font-semibold mt-2">Menü</h2> */}
              </div>
-             {/* --- KORRIGIERT: Link zur Startseite --- */}
+             {/* --- Ende NEU --- */}
+
+             {/* Link zur Startseite (unverändert) */}
              <div className="p-2 border-b">
                 <SheetClose asChild>
                     <Link
                         href="/"
-                        // Styling ähnlich wie Button variant="ghost"
                         className={cn(
                             "flex items-center w-full justify-start rounded-md px-3 py-2 text-sm font-medium",
                             "hover:bg-accent hover:text-accent-foreground",
@@ -60,23 +73,35 @@ export default function Header({ user }) {
                     </Link>
                 </SheetClose>
              </div>
-             {/* --- Ende KORREKTUR --- */}
+
+             {/* Hauptnavigation (unverändert) */}
              <div className="flex-grow overflow-y-auto">
-                 <DashboardNav /> {/* DashboardNav bleibt hier */}
+                 <DashboardNav />
              </div>
           </SheetContent>
         </Sheet>
 
-        {/* Titel */}
-        <div className="text-lg font-semibold">
+        {/* Titel (Desktop) */}
+        <div className="text-lg font-semibold hidden md:block"> {/* Nur auf Desktop anzeigen */}
           PromptHaus Dashboard
         </div>
+        {/* Logo (Desktop) - Falls du es auch hier möchtest */}
+        <Link href="/" className="md:hidden"> {/* Nur auf Mobile anzeigen, wenn Titel ausgeblendet */}
+             <Image
+                 src="/prompthaus-logo.png"
+                 alt="PromptHaus Logo"
+                 width={120}
+                 height={30}
+             />
+         </Link>
+
       </div>
 
       {/* User Dropdown (unverändert) */}
       {user && (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+          {/* ... (Dropdown-Code bleibt gleich) ... */}
+           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon">
               <User className="h-5 w-5" />
               <span className="sr-only">Benutzermenü öffnen</span>
