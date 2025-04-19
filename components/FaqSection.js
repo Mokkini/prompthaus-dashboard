@@ -62,7 +62,7 @@ export function FaqSection() {
             <div className="mt-6 flex justify-center md:justify-start">
                {/* WICHTIG: Ersetze src durch den Pfad zu deinem Bild oder entferne diesen Block, wenn du keine Grafik hast */}
               <Image
-                src="/Images/faq-questionmark.png" // Beispielpfad - BITTE ANPASSEN!
+                src="/images/faq-questionmark.png" // Beispielpfad - BITTE ANPASSEN!
                 alt="Dekoratives Fragezeichen"
                 width={200} // Beispielbreite
                 height={200} // Beispielhöhe
