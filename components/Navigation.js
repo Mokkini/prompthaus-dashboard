@@ -6,34 +6,33 @@ import Image from 'next/image';
 import { Sheet, SheetTrigger, SheetContent, SheetClose } from '@/components/ui/sheet';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-// *** NEUER IMPORT ***
 import { usePathname } from 'next/navigation';
 
 export default function Navigation({ user }) {
-  // *** AKTUELLEN PFAD ERMITTELN ***
   const pathname = usePathname();
 
-  // Bestehende Links für Homepage-Scrolling
+  // Scroll-Links für Homepage (OHNE Themenpakete)
   const scrollLinks = [
     { href: '#hero', label: 'Start' },
     { href: '#how', label: "So funktioniert's" },
-    { href: '#pakete', label: 'Themenpakete' },
+    // { href: '#pakete', label: 'Themenpakete' }, // <-- Entfernt
   ];
 
-  // Neuer Link für die Kategorieseite
-  const categoryLink = { href: '/kategorien', label: 'Kategorien' }; // Oder 'Themen'
+  // Separate Links für dedizierte Seiten
+  const pageLinks = [
+    { href: '/pakete', label: 'Themenpakete' }, // <-- NEU HIER
+    { href: '/kategorien', label: 'Kategorien' },
+  ];
 
-  // Hilfsfunktion, um den korrekten Href für Scroll-Links zu generieren
+  // Hilfsfunktion für Scroll-Links (bleibt gleich)
   const getScrollLinkHref = (hash) => {
-    // Wenn wir auf der Homepage sind ('/'), nur den Hash verwenden.
-    // Sonst den Pfad zur Homepage + Hash verwenden.
     return pathname === '/' ? hash : `/${hash}`;
   };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <nav className="container mx-auto h-14 flex justify-between items-center px-4">
-        {/* Logo oben links */}
+        {/* Logo */}
         <Link href="/">
           <Image
             src="/prompthaus-logo.png"
@@ -47,24 +46,28 @@ export default function Navigation({ user }) {
 
         {/* Desktop‑Links */}
         <div className="hidden md:flex items-center space-x-6">
+          {/* Scroll Links */}
           {scrollLinks.map(({ href, label }) => (
             <Link
               key={href}
-              // *** ANGEPASSTER HREF ***
               href={getScrollLinkHref(href)}
               className="hover:text-primary transition-colors"
             >
               {label}
             </Link>
           ))}
-          <Link
-             key={categoryLink.href}
-             href={categoryLink.href}
-             className="hover:text-primary transition-colors"
-          >
-            {categoryLink.label}
-          </Link>
+          {/* Page Links */}
+          {pageLinks.map(({ href, label }) => ( // <-- Iteriert über pageLinks
+            <Link
+              key={href}
+              href={href}
+              className="hover:text-primary transition-colors"
+            >
+              {label}
+            </Link>
+          ))}
 
+          {/* User/Login Button */}
           {user ? (
             <Link href="/meine-prompts">
               <Button size="sm" variant="default">Mein Bereich</Button>
@@ -92,10 +95,10 @@ export default function Navigation({ user }) {
               </SheetClose>
             </div>
             <nav className="flex flex-col space-y-4">
+              {/* Scroll Links */}
               {scrollLinks.map(({ href, label }) => (
                 <SheetClose asChild key={href}>
                   <Link
-                    // *** ANGEPASSTER HREF ***
                     href={getScrollLinkHref(href)}
                     className="text-lg hover:text-primary transition-colors block py-1"
                   >
@@ -103,15 +106,19 @@ export default function Navigation({ user }) {
                   </Link>
                 </SheetClose>
               ))}
-              <SheetClose asChild key={categoryLink.href}>
-                <Link
-                   href={categoryLink.href}
-                   className="text-lg hover:text-primary transition-colors block py-1"
-                >
-                  {categoryLink.label}
-                </Link>
-              </SheetClose>
+              {/* Page Links */}
+              {pageLinks.map(({ href, label }) => ( // <-- Iteriert über pageLinks
+                <SheetClose asChild key={href}>
+                  <Link
+                    href={href}
+                    className="text-lg hover:text-primary transition-colors block py-1"
+                  >
+                    {label}
+                  </Link>
+                </SheetClose>
+              ))}
 
+              {/* User/Login Button */}
               <div className="pt-6 border-t mt-4">
                 {user ? (
                   <SheetClose asChild>

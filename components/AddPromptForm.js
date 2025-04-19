@@ -1,4 +1,4 @@
-// components/AddPromptForm.js - REFACTORED with shadcn/ui
+// components/AddPromptForm.js - REFACTORED with shadcn/ui & system_prompt support
 "use client";
 
 import { useState } from 'react';
@@ -13,7 +13,6 @@ import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 
 export default function AddPromptForm() {
   const [message, setMessage] = useState('');
-  // Neuer State für den Typ der Nachricht (für Alert-Styling)
   const [messageType, setMessageType] = useState(null); // 'success' | 'error' | null
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [variantsJson, setVariantsJson] = useState('');
@@ -25,13 +24,18 @@ export default function AddPromptForm() {
     setMessageType(null); // Nachrichtentyp zurücksetzen
 
     const formData = new FormData(event.currentTarget);
+    // Stelle sicher, dass der aktuelle Wert aus dem State verwendet wird,
+    // falls das Formular-Reset nicht schnell genug ist oder fehlschlägt.
+    formData.set('variantsJson', variantsJson);
+
     const result = await addPromptPackage(formData);
 
     if (result.success) {
       setMessage(result.message || 'Paket erfolgreich hinzugefügt.');
       setMessageType('success'); // Typ auf Erfolg setzen
+      // Formularfelder manuell zurücksetzen
       event.target.reset();
-      setVariantsJson('');
+      setVariantsJson(''); // State auch zurücksetzen
     } else {
       setMessage(result.message || 'Ein unbekannter Fehler ist aufgetreten.');
       setMessageType('error'); // Typ auf Fehler setzen
@@ -40,30 +44,28 @@ export default function AddPromptForm() {
     setIsSubmitting(false);
   };
 
-  // Gekürzter Placeholder für Lesbarkeit
+  // --- Aktualisierter Placeholder mit system_prompt ---
   const jsonPlaceholder = `[
   {
-    "title": "Variante 1...",
-    "description": "...",
-    "template": "..."
+    "title": "Variante 1 Titel",
+    "description": "Beschreibung für Variante 1...",
+    "template": "Template-Text für Variante 1 mit {{platzhalter}}...",
+    "system_prompt": "Optional: Spezifische Anweisung für die KI für Variante 1..."
   },
   {
-    "title": "Variante 2...",
-    "description": "...",
-    "template": "..."
+    "title": "Variante 2 Titel",
+    "description": "Beschreibung für Variante 2...",
+    "template": "Template-Text für Variante 2...",
+     // system_prompt kann auch weggelassen werden, dann wird der Standard genutzt
   },
-  ... (genau 5 Stück)
+  // ... (insgesamt genau 5 Stück)
 ]`;
+  // --- Ende Aktualisierung ---
 
   return (
-    // Ersetze Inline-Styles durch Tailwind-Klassen für Abstände
-    // Das <form> selbst braucht keinen Rahmen mehr, da es in der Card ist.
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Die Überschrift wird durch CardTitle in page.js ersetzt, daher hier auskommentiert */}
-      {/* <h3 className="text-xl font-semibold">Neues Prompt-Paket hinzufügen</h3> */}
-
-      {/* Verwende Label und Input von shadcn/ui */}
-      <div className="space-y-2">
+      {/* ... (Felder für name, slug, category, description bleiben gleich) ... */}
+       <div className="space-y-2">
         <Label htmlFor="name">Paket-Name</Label>
         <Input type="text" id="name" name="name" required />
       </div>
@@ -78,7 +80,6 @@ export default function AddPromptForm() {
 
       <div className="space-y-2">
          <Label htmlFor="category">Kategorie</Label>
-         {/* Input funktioniert mit datalist */}
          <Input type="text" id="category" name="category" required list="category-suggestions" />
          <datalist id="category-suggestions">
            <option value="Alltag" />
@@ -92,30 +93,31 @@ export default function AddPromptForm() {
 
       <div className="space-y-2">
         <Label htmlFor="description">Beschreibung</Label>
-        {/* Verwende Textarea von shadcn/ui */}
         <Textarea id="description" name="description" rows={3} />
       </div>
+
 
       <div className="space-y-2">
         <Label htmlFor="variantsJson">Varianten (als JSON-Array - genau 5 Stück)</Label>
         <Textarea
           id="variantsJson"
           name="variantsJson"
-          rows={20} // Höhe beibehalten
+          rows={20}
           required
-          value={variantsJson} // Gesteuert durch State
-          onChange={(e) => setVariantsJson(e.target.value)} // State-Update
-          placeholder={jsonPlaceholder} // Placeholder
-          className="font-mono text-sm bg-muted/50" // Monospace Schriftart + leichter Hintergrund
+          value={variantsJson}
+          onChange={(e) => setVariantsJson(e.target.value)}
+          placeholder={jsonPlaceholder} // Aktualisierter Placeholder
+          className="font-mono text-sm bg-muted/50"
         />
+         {/* --- Aktualisierte Beschreibung --- */}
          <p className="text-sm text-muted-foreground">
-           Struktur pro Variante: {`{ "title": "...", "description": "...", "template": "..." }`}
+           Struktur pro Variante: {`{ "title": "...", "description": "...", "template": "...", "system_prompt": "(optional)..." }`}
          </p>
+         {/* --- Ende Aktualisierung --- */}
       </div>
 
-      {/* Feedback-Nachricht als Alert */}
+      {/* Feedback-Nachricht als Alert (unverändert) */}
       {message && (
-         // Setze Variante und ggf. Klassen basierend auf messageType
         <Alert variant={messageType === 'error' ? 'destructive' : 'default'} className={messageType === 'success' ? 'border-green-500 text-green-700 dark:text-green-300 dark:border-green-700 [&>svg]:text-green-700' : ''}>
            {messageType === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
           <AlertTitle>{messageType === 'error' ? 'Fehler' : 'Erfolg'}</AlertTitle>
@@ -125,9 +127,8 @@ export default function AddPromptForm() {
         </Alert>
       )}
 
-       {/* Verwende Button von shadcn/ui */}
+       {/* Button (unverändert) */}
       <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
-         {/* Zeige Spinner wenn isSubmitting true ist */}
          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
          {isSubmitting ? 'Speichere...' : 'Prompt-Paket erstellen'}
        </Button>

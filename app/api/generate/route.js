@@ -1,108 +1,224 @@
-// app/api/generate/route.js - Mit System Prompt & Parametern
+// app/api/generate/route.js - Angepasst für individuellen Systemprompt pro Variante
 
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { createClient } from '@supabase/supabase-js'; // Nur diesen Client hier
+import { createClient as createServiceRoleClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/lib/supabase/server';
 
-// Supabase Client (Service Role)
-const supabase = createClient(
+const FREE_PROMPT_SLUG = 'test';
+
+const supabaseService = createServiceRoleClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// OpenAI Client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// OpenAI Modell und Parameter
-const OPENAI_MODEL = 'gpt-4o-mini'; // Oder ein anderes Modell deiner Wahl
+const OPENAI_MODEL = 'gpt-4o-mini';
 const DEFAULT_TEMPERATURE = 0.7;
-const DEFAULT_MAX_TOKENS = 1500; // Passe dies nach Bedarf an
+const DEFAULT_MAX_TOKENS = 1500;
+
+// --- NEU: Standard-Systemprompt als Konstante definieren ---
+const DEFAULT_SYSTEM_PROMPT = `Du bist ein professioneller Textassistent für moderne Kommunikation.
+Formuliere auf Basis einer stilistischen Vorlage und Platzhalterdaten einen eigenständigen, stimmigen Text.
+Die Vorlage dient nur als stilistischer Rahmen – du darfst Sätze neu bauen, kürzen oder umstellen.
+Wichtig: Wiederhole die Platzhalter nie wörtlich, sondern wähle passende Formulierungen mit Tiefe und Wirkung.
+Berücksichtige unbedingt den gewählten Tonfall (z. B. emotional, sachlich, kreativ) und schreibe so, wie Menschen heute auf Social Media, im Beruf oder im Alltag kommunizieren: klar, nahbar, prägnant.
+Ziel ist ein kurzer, runder Text, der beim Lesen überzeugt – nicht einfach eine Ausfüllhilfe.`;
+// --- Ende NEU ---
+
+// System Prompt für Verfeinerung (bleibt separat, da andere Logik)
+const REFINE_SYSTEM_PROMPT = "Du bist ein hilfreicher Assistent. Deine Aufgabe ist es, einen vorhandenen Text basierend auf zusätzlichen Anweisungen oder Informationen zu überarbeiten und zu verbessern. Behalte den ursprünglichen Zweck und Ton bei, sofern nicht anders angewiesen.";
+
 
 export async function POST(request) {
   console.log("API route /api/generate wurde aufgerufen.");
 
+  let user = null;
+  let hasAccess = false;
+
   try {
-    // 1. Anfragedaten lesen (unverändert)
+    // 1. Anfragedaten lesen
     const body = await request.json();
-    const { promptPackageSlug, variantIndex, placeholders } = body;
-    if (!promptPackageSlug || typeof variantIndex !== 'number' || variantIndex < 0 || !placeholders || typeof placeholders !== 'object') {
-       return NextResponse.json({ error: 'Ungültige Eingabedaten.' }, { status: 400 });
+    const {
+        action = 'generate',
+        promptPackageSlug,
+        variantIndex,
+        placeholders,
+        tone, // Wird aktuell nicht direkt im Systemprompt verwendet, aber ggf. im User-Prompt oder Template
+        originalText,
+        additionalInfo
+    } = body;
+
+    console.log("Empfangene Aktion:", action);
+    console.log("Empfangene Daten:", { promptPackageSlug, variantIndex, action });
+
+    // Validierungen (wie vorher)
+    if (['generate', 'rephrase'].includes(action)) {
+        if (!promptPackageSlug || typeof variantIndex !== 'number' || variantIndex < 0 || !placeholders || typeof placeholders !== 'object') {
+           return NextResponse.json({ error: 'Ungültige Eingabedaten für Generierung/Neuformulierung.' }, { status: 400 });
+        }
     }
-    console.log("Empfangene Daten:", { promptPackageSlug, variantIndex }); // Logge Platzhalter nicht unbedingt komplett
-
-    // 2. Prompt-Template von Supabase holen (unverändert)
-    console.log(`Suche Prompt-Paket mit Slug: ${promptPackageSlug}`);
-    const { data: packageData, error: packageError } = await supabase
-      .from('prompt_packages').select('prompt_variants').eq('slug', promptPackageSlug).single();
-
-    if (packageError || !packageData || !packageData.prompt_variants) {
-        // ... Fehlerbehandlung für Paket/Varianten wie vorher ...
-        const status = packageError?.code === 'PGRST116' ? 404 : 500;
-        const message = packageError?.code === 'PGRST116' ? `Paket '${promptPackageSlug}' nicht gefunden.` : 'DB Fehler beim Holen des Pakets/Varianten.';
-        console.error("Supabase Fehler:", packageError || "Keine Varianten gefunden");
-        return NextResponse.json({ error: message }, { status });
+    if (action === 'refine') {
+        if (!originalText || !additionalInfo) {
+            return NextResponse.json({ error: 'Fehlende Daten für Verfeinerung (originalText, additionalInfo).' }, { status: 400 });
+        }
     }
 
-    const variants = packageData.prompt_variants;
-    if (!Array.isArray(variants) || variantIndex >= variants.length) { // Prüfe ob Array
-        console.error("Ungültiger variantIndex oder Varianten kein Array:", variantIndex, variants);
-        return NextResponse.json({ error: 'Ungültiger variantIndex oder Variantenformat.' }, { status: 400 });
+    // 2. Authentifizierung/Autorisierung (wie vorher)
+    const isFreePromptRequest = promptPackageSlug === FREE_PROMPT_SLUG && action !== 'refine';
+
+    if (isFreePromptRequest) {
+      hasAccess = true;
+      console.log("Zugriff gewährt: Kostenloser Prompt (Generierung/Neuformulierung).");
+    } else {
+      console.log("Prüfe Authentifizierung...");
+      const supabaseAuth = createServerClient();
+      const { data: { user: loggedInUser }, error: userError } = await supabaseAuth.auth.getUser();
+
+      if (userError || !loggedInUser) {
+        console.error("Authentifizierungsfehler oder kein User:", userError?.message);
+        return NextResponse.json({ error: 'Authentifizierung fehlgeschlagen. Bitte einloggen.' }, { status: 401 });
+      }
+      user = loggedInUser;
+      console.log(`Authentifiziert als: ${user.email}`);
+
+      // Zugriffsprüfung (wie vorher, TODO bleibt bestehen)
+      if (action !== 'refine' && promptPackageSlug) {
+          console.warn("WARNUNG: Zugriffsprüfung für gekaufte Pakete ist noch nicht implementiert!");
+          hasAccess = true; // Temporär
+          if (!hasAccess) {
+             console.log(`Zugriff verweigert für User ${user.email} auf Paket ${promptPackageSlug}.`);
+             return NextResponse.json({ error: 'Kein Zugriff auf dieses Prompt-Paket.' }, { status: 403 });
+          }
+          console.log(`Zugriff gewährt für User ${user.email} auf Paket ${promptPackageSlug}.`);
+      } else if (action === 'refine') {
+          hasAccess = true;
+          console.log(`Zugriff für Refine-Aktion gewährt für User ${user.email}.`);
+      } else {
+          return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 });
+      }
     }
 
-    const selectedVariant = variants[variantIndex];
-    const templateString = selectedVariant.template;
-    if (!templateString) {
-         console.error("Leeres Template in Variante:", selectedVariant);
-         return NextResponse.json({ error: 'Ausgewählte Variante hat kein Template.' }, { status: 500 });
-    }
-    console.log(`Template für Variante ${variantIndex} ausgewählt.`);
+    // 3. OpenAI Prompt vorbereiten (abhängig von der Aktion)
+    if (hasAccess) {
+      let systemPrompt = ""; // Wird jetzt dynamisch gesetzt
+      let userPrompt = "";
 
-    // 3. Platzhalter ersetzen (unverändert)
-    let filledTemplate = templateString;
-    for (const key in placeholders) {
-        const placeholderToReplace = `{{${key}}}`;
-        const value = String(placeholders[key]); // Sicherstellen, dass es ein String ist
-        filledTemplate = filledTemplate.split(placeholderToReplace).join(value);
-    }
-    console.log("Fertig befülltes Template (User Prompt) erstellt.");
+      if (action === 'generate' || action === 'rephrase') {
+        // Paketdaten und Variante holen
+        const { data: packageData, error: packageError } = await supabaseService
+          .from('prompt_packages')
+          .select('prompt_variants') // Stellt sicher, dass alle Felder der Varianten geholt werden
+          .eq('slug', promptPackageSlug)
+          .single();
 
+        if (packageError || !packageData || !packageData.prompt_variants) {
+            console.error('Fehler beim Laden des Pakets/Varianten:', packageError?.message);
+            return NextResponse.json({ error: 'Prompt-Paket oder Varianten nicht gefunden.' }, { status: 404 });
+        }
 
-    // 4. OpenAI API aufrufen - *** JETZT MIT SYSTEM PROMPT & PARAMETERN ***
-    console.log(`Rufe OpenAI API mit Modell ${OPENAI_MODEL} auf...`);
+        const variants = packageData.prompt_variants;
+        if (!Array.isArray(variants) || variantIndex >= variants.length) {
+            console.error('Ungültiger variantIndex:', variantIndex, 'für Varianten:', variants);
+            return NextResponse.json({ error: 'Ungültiger Index für Prompt-Variante.' }, { status: 400 });
+        }
 
-    // *** NEU: Definiere hier deinen System Prompt! ***
-    // NEUER System Prompt - Erlaubt mehr Anpassung
-const systemPrompt = "Du bist ein hilfreicher Assistent. Nutze die folgende Vorlage und die vom Benutzer eingegebenen Platzhalter als Basis, um einen passenden und ansprechenden Text zu generieren. Passe Stil und Formulierung gerne kreativ und sinnvoll an den jeweiligen Kontext an, um das bestmögliche Ergebnis zu erzielen.";
-    // Optional: Hole System Prompt aus packageData oder selectedVariant, falls du das später einbaust.
+        const selectedVariant = variants[variantIndex];
+        if (!selectedVariant) {
+             console.error('Ausgewählte Variante ist undefiniert bei Index:', variantIndex);
+             return NextResponse.json({ error: 'Ausgewählte Prompt-Variante konnte nicht geladen werden.' }, { status: 500 });
+        }
 
-    const completion = await openai.chat.completions.create({
-      model: OPENAI_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt }, // <-- System Nachricht hinzugefügt!
-        { role: 'user', content: filledTemplate }   // <-- Der eigentliche Prompt
-      ],
-      temperature: DEFAULT_TEMPERATURE,     // <-- Temperatur hinzugefügt
-      max_tokens: DEFAULT_MAX_TOKENS,       // <-- Max Tokens hinzugefügt
-      // weitere Parameter wie top_p, presence_penalty etc. hier möglich
-    });
+        const templateString = selectedVariant.template;
+        if (!templateString) {
+            console.error('Leeres Template in Variante:', selectedVariant);
+            return NextResponse.json({ error: 'Das Template für diese Variante ist leer.' }, { status: 500 });
+        }
 
-    // 5. Ergebnis extrahieren und zurückgeben (unverändert)
-    const aiResponseContent = completion.choices?.[0]?.message?.content;
-    if (!aiResponseContent) {
-         console.error("Keine gültige Antwort von OpenAI extrahiert:", completion);
-         return NextResponse.json({ error: 'Konnte keine gültige Antwort von OpenAI erhalten.' }, { status: 500 });
-    }
-    console.log("Antwort von OpenAI erfolgreich erhalten.");
-    return NextResponse.json({ generatedText: aiResponseContent.trim() });
+        // --- NEUE LOGIK: Systemprompt bestimmen ---
+        // Nutze den spezifischen Systemprompt der Variante, falls vorhanden, sonst den Default.
+        systemPrompt = selectedVariant.system_prompt || DEFAULT_SYSTEM_PROMPT;
+        console.log(`Verwendeter Systemprompt für ${promptPackageSlug} (Variante ${variantIndex}): ${selectedVariant.system_prompt ? 'Individuell' : 'Standard'}`);
+
+        // Spezifische Anpassung für 'rephrase' (optional, kann auch im individuellen Prompt stehen)
+        if (action === 'rephrase') {
+            // Fügt die Anweisung hinzu, egal ob individueller oder Standard-Prompt verwendet wird.
+            // Alternativ könnte man dies nur hinzufügen, wenn der Standard-Prompt verwendet wird,
+            // oder erwarten, dass die Rephrase-Anweisung Teil des individuellen Prompts ist.
+            systemPrompt += "\nFormuliere den folgenden Text neu, behalte aber den Kerninhalt und den gewünschten Ton bei. Sei dabei kreativ.";
+            console.log("Systemprompt für Rephrase angepasst.");
+        }
+        // --- Ende NEUE LOGIK ---
+
+        // User Prompt mit Platzhaltern füllen (wie vorher)
+        let filledTemplate = templateString;
+        for (const key in placeholders) {
+            // Sicherstellen, dass der Platzhalter auch wirklich im Template existiert, um unnötige Ersetzungen zu vermeiden
+            const placeholderRegex = new RegExp(`\\{\\{${key}\\}\\}`, 'g'); // 'g' für globale Ersetzung
+            if (placeholderRegex.test(filledTemplate)) {
+                filledTemplate = filledTemplate.replace(placeholderRegex, String(placeholders[key]));
+            } else {
+                console.warn(`Platzhalter {{${key}}} nicht im Template gefunden.`);
+            }
+        }
+        userPrompt = filledTemplate;
+
+      } else if (action === 'refine') {
+        // System Prompt für Verfeinerung (bleibt wie es war)
+        systemPrompt = REFINE_SYSTEM_PROMPT;
+        // User Prompt für Verfeinerung (bleibt wie es war)
+        userPrompt = `Ursprünglicher Text:\n"""\n${originalText}\n"""\n\nZusätzliche Anweisungen/Informationen:\n"""\n${additionalInfo}\n"""\n\nBitte gib nur den überarbeiteten Text zurück.`;
+        console.log("Systemprompt für Refine gesetzt.");
+
+      } else {
+        return NextResponse.json({ error: 'Unbekannte Aktion.' }, { status: 400 });
+      }
+
+      // 4. OpenAI API aufrufen
+      console.log(`Rufe OpenAI API für Aktion '${action}' auf...`);
+      // console.log("System Prompt:", systemPrompt); // Zum Debuggen ggf. einkommentieren
+      // console.log("User Prompt:", userPrompt); // Zum Debuggen ggf. einkommentieren
+
+      const completion = await openai.chat.completions.create({
+        model: OPENAI_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: DEFAULT_TEMPERATURE,
+        max_tokens: DEFAULT_MAX_TOKENS,
+      });
+
+      // 5. Ergebnis extrahieren und zurückgeben
+      const aiResponseContent = completion.choices?.[0]?.message?.content;
+      if (!aiResponseContent) {
+          console.error('Keine gültige Antwort von OpenAI erhalten:', completion);
+          return NextResponse.json({ error: 'Keine gültige Antwort von OpenAI.' }, { status: 500 });
+      }
+      console.log("Antwort von OpenAI erfolgreich erhalten.");
+      return NextResponse.json({ generatedText: aiResponseContent.trim() });
+
+    } // Ende von if(hasAccess)
+
+    // Fallback (sollte nicht erreicht werden)
+    return NextResponse.json({ error: 'Zugriff nicht erlaubt.' }, { status: 403 });
 
   } catch (error) {
-     // Fehlerbehandlung (unverändert)
+     // Allgemeine Fehlerbehandlung (wie vorher)
      console.error("Schwerwiegender Fehler in /api/generate:", error);
-     // ... (restliche Fehlerbehandlung wie vorher) ...
-      if (error.response) { /* OpenAI API Fehler */ return NextResponse.json({ error: `OpenAI API Fehler: ${error.response.statusText || 'Unbekannt'}` }, { status: error.response.status || 500 });}
-      if (error instanceof SyntaxError) { /* JSON Fehler */ return NextResponse.json({ error: 'Ungültiges JSON im Request Body.' }, { status: 400 }); }
-      return NextResponse.json({ error: `Interner Serverfehler: ${error.message}` }, { status: 500 }); // Gib mehr Details zurück
+     if (error.response) {
+         console.error("OpenAI API Fehler Details:", error.response.data);
+         return NextResponse.json({ error: `API Fehler: ${error.response.statusText || 'Unbekannt'}` }, { status: error.response.status || 500 });
+     }
+     if (error instanceof SyntaxError) {
+         return NextResponse.json({ error: 'Ungültiges JSON im Request Body.' }, { status: 400 });
+     }
+     // Log des spezifischen Fehlers für bessere Diagnose
+     console.error("Fehlermeldung:", error.message);
+     console.error("Stack Trace:", error.stack);
+     return NextResponse.json({ error: `Interner Serverfehler: ${error.message}` }, { status: 500 });
   }
 }

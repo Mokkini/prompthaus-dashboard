@@ -82,6 +82,57 @@ export async function addPromptPackage(formData) {
   // 7. Erfolgsmeldung zurückgeben
   return { success: true, message: 'Prompt-Paket erfolgreich erstellt!' };
 }
+// app/admin/prompts/actions.js
+// ... (vorhandene Imports und Funktionen wie addPromptPackage, deletePromptPackage, updatePromptPackage) ...
+
+// NEUE Funktion zum Laden der Daten für die Admin-Prompt-Seite
+export async function getAdminPageData() {
+  'use server'; // Sicherstellen, dass dies auf dem Server läuft
+
+  const supabaseUserClient = createServerComponentClient(); // Für Auth Check
+
+  // 1. User holen und Admin-Status prüfen
+  const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser();
+
+  if (userError) {
+    console.error("Fehler beim Holen des Users:", userError);
+    return { success: false, error: 'Authentifizierungsfehler.', user: null, prompts: [] };
+  }
+
+  if (!user) {
+    // Nicht eingeloggt, sollte eigentlich durch Middleware abgefangen werden, aber sicher ist sicher
+    return { success: false, error: 'Nicht eingeloggt.', user: null, prompts: [] };
+  }
+
+  const isAdmin = user.email === process.env.ADMIN_EMAIL;
+  if (!isAdmin) {
+    // Kein Admin
+    return { success: false, error: 'Nicht autorisiert.', user: user, prompts: [] };
+  }
+
+  console.log(`Admin ${user.email} lädt Daten für /admin/prompts.`);
+
+  // 2. Prompts laden (mit Admin Client)
+  const supabaseAdmin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
+
+  const { data: prompts, error: promptsError } = await supabaseAdmin
+    .from('prompt_packages')
+    .select('id, slug, name, category') // Nur benötigte Felder
+    .order('category', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true });
+
+  if (promptsError) {
+    console.error("Fehler beim Laden der Prompt-Pakete für Admin:", promptsError);
+    return { success: false, error: `Fehler beim Laden der Prompts: ${promptsError.message}`, user: user, prompts: [] };
+  }
+
+  // 3. Erfolgreich: User und Prompts zurückgeben
+  return { success: true, user: user, prompts: prompts || [], error: null };
+}
+
 // Innerhalb von app/admin/prompts/actions.js
 
 // ... (vorhandene Imports und addPromptPackage Funktion) ...

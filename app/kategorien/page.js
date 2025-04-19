@@ -36,14 +36,12 @@ export default function KategorienPage() {
           {/* Grid für die Kategorien */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
             {allCategories.map((category, index) => (
-              <Link
-                // WICHTIG: Der 'href' Link sollte später zu einer gefilterten Produktansicht führen
-                // Beispiel: `/produkte?kategorie=${encodeURIComponent(category)}`
-                // Fürs Erste setzen wir ihn auf '#' oder '/#pakete'
-                href="#pakete" // Oder einfach nur "#"
-                key={index}
-                className="block p-4 bg-muted dark:bg-gray-800 rounded-lg text-center text-sm font-medium text-foreground hover:bg-primary hover:text-primary-foreground dark:hover:bg-primary dark:hover:text-primary-foreground transition-colors duration-200 ease-in-out shadow-sm hover:shadow-md"
-              >
+               <Link
+               // *** GEÄNDERTER href: Zeigt auf die neue Paketseite ***
+               href={`/pakete?kategorie=${encodeURIComponent(category)}`}
+               key={index}
+               className="block p-4 bg-muted dark:bg-gray-800 rounded-lg text-center text-sm font-medium text-foreground hover:bg-primary hover:text-primary-foreground dark:hover:bg-primary dark:hover:text-primary-foreground transition-colors duration-200 ease-in-out shadow-sm hover:shadow-md"
+             >
                 {category}
               </Link>
             ))}

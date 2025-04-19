@@ -28,7 +28,7 @@ export function CategoryShowcase() {
             <Link
               // Links könnten hier auch schon zur Kategorieseite führen und dort filtern?
               // Oder zur Produktliste mit Filter? Fürs Erste: #pakete
-              href="#pakete" // Oder "#"
+              href={`/pakete?kategorie=${encodeURIComponent(category)}`}
               key={index}
               className="block p-4 bg-background dark:bg-gray-800 rounded-lg text-center text-sm font-medium text-foreground hover:bg-primary hover:text-primary-foreground dark:hover:bg-primary dark:hover:text-primary-foreground transition-colors duration-200 ease-in-out shadow-sm hover:shadow-md"
             >
