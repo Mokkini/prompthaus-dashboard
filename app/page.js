@@ -56,7 +56,7 @@ export default async function LandingPage() { // <-- searchParams entfernt
             <div className="flex justify-center gap-4">
               <Button size="lg" asChild>
                 {/* *** GEÄNDERTER Link: Zeigt zur neuen Paketseite *** */}
-                <Link href="/pakete">Jetzt entdecken</Link>
+                <Link href="/kategorien">Jetzt entdecken</Link>
               </Button>
             </div>
           </div>

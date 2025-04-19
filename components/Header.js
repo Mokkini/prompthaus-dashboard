@@ -1,7 +1,7 @@
-// components/Header.js - Mit Logo im mobilen Menü
+// components/Header.js - Mit Logo, verstecktem Titel und Image-Fix
 
 import Link from 'next/link';
-import Image from 'next/image'; // Image importieren
+import Image from 'next/image';
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { User, LogOut, Menu, Home } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
@@ -40,22 +40,22 @@ export default function Header({ user }) {
               <span className="sr-only">Menü öffnen</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 flex flex-col bg-background"> {/* Hintergrund explizit setzen */}
-             {/* --- NEU: Logo im Sheet Header --- */}
-             <div className="p-4 border-b">
+          <SheetContent side="left" className="p-0 flex flex-col bg-background">
+             {/* --- SheetHeader mit Logo und verstecktem Titel --- */}
+             <SheetHeader className="p-4 border-b">
+                <SheetTitle className="sr-only">Hauptmenü</SheetTitle>
                 <Link href="/" aria-label="Zur PromptHaus Startseite">
                     <Image
-                        src="/prompthaus-logo.png" // Pfad zum Logo
+                        src="/prompthaus-logo.png"
                         alt="PromptHaus Logo"
-                        width={128} // Breite anpassen
-                        height={32} // Höhe anpassen
+                        width={128}
+                        height={32}
                         priority
+                        className="h-auto" // <-- Hinzugefügt für korrekte Skalierung
                     />
                 </Link>
-                {/* Optional: Den Titel "PromptHaus Menü" entfernen oder anpassen */}
-                {/* <h2 className="text-lg font-semibold mt-2">Menü</h2> */}
-             </div>
-             {/* --- Ende NEU --- */}
+             </SheetHeader>
+             {/* --- Ende Anpassung --- */}
 
              {/* Link zur Startseite (unverändert) */}
              <div className="p-2 border-b">
@@ -82,16 +82,17 @@ export default function Header({ user }) {
         </Sheet>
 
         {/* Titel (Desktop) */}
-        <div className="text-lg font-semibold hidden md:block"> {/* Nur auf Desktop anzeigen */}
+        <div className="text-lg font-semibold hidden md:block">
           PromptHaus Dashboard
         </div>
-        {/* Logo (Desktop) - Falls du es auch hier möchtest */}
-        <Link href="/" className="md:hidden"> {/* Nur auf Mobile anzeigen, wenn Titel ausgeblendet */}
+        {/* Logo (Mobile Header) */}
+        <Link href="/" className="md:hidden">
              <Image
                  src="/prompthaus-logo.png"
                  alt="PromptHaus Logo"
                  width={120}
                  height={30}
+                 className="h-auto" // <-- Hinzugefügt für korrekte Skalierung
              />
          </Link>
 
@@ -100,7 +101,6 @@ export default function Header({ user }) {
       {/* User Dropdown (unverändert) */}
       {user && (
         <DropdownMenu>
-          {/* ... (Dropdown-Code bleibt gleich) ... */}
            <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon">
               <User className="h-5 w-5" />

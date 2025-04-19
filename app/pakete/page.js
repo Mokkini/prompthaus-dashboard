@@ -1,4 +1,4 @@
-// app/pakete/page.js
+// app/pakete/page.js - Mit Zurück-Button für die "Alle Pakete"-Ansicht
 
 // ======= Imports =======
 import { createClient } from '@/lib/supabase/server';
@@ -6,8 +6,7 @@ import Navigation from '@/components/Navigation';
 import { ProductCard } from '@/components/store/ProductCard'; // Pfad prüfen!
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
-// ChevronRight wird nicht mehr benötigt
-import { XCircle, LayoutGrid } from 'lucide-react';
+import { XCircle, LayoutGrid, ArrowLeft } from 'lucide-react'; // ArrowLeft hinzugefügt
 import RevealOnScroll from '@/components/ui/RevealOnScroll'; // Für den Effekt
 // Ggf. Footer importieren
 // import Footer from '@/components/Footer';
@@ -60,25 +59,36 @@ export default async function PaketePage({ searchParams }) {
             {pageTitle} {/* Dynamischer Titel */}
           </h1>
 
-          {/* Filter-Anzeige und Reset/Zurück-Buttons (nur wenn Kategorie ausgewählt) */}
-          {selectedCategory && (
-            <div className="text-center mb-8 flex flex-wrap justify-center items-center gap-4"> {/* flex-wrap hinzugefügt */}
-              {/* Button: Filter zurücksetzen */}
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/pakete" scroll={false}>
-                  <XCircle className="mr-2 h-4 w-4" />
-                  Alle Pakete anzeigen
-                </Link>
-              </Button>
-              {/* Button: Zurück zu Kategorien (bleibt erhalten) */}
+          {/* --- ANGEPASST: Bedingte Buttons --- */}
+          <div className="text-center mb-8 flex flex-wrap justify-center items-center gap-4">
+            {selectedCategory ? (
+              // Buttons, wenn eine Kategorie ausgewählt ist
+              <>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/pakete" scroll={false}>
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Alle Pakete anzeigen
+                  </Link>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/kategorien" scroll={false}>
+                    <LayoutGrid className="mr-2 h-4 w-4" />
+                    Zurück zu allen Kategorien
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              // Button, wenn KEINE Kategorie ausgewählt ist (Alle Pakete Ansicht)
               <Button variant="outline" size="sm" asChild>
                 <Link href="/kategorien" scroll={false}>
-                  <LayoutGrid className="mr-2 h-4 w-4" />
-                  Zurück zu allen Kategorien
+                  <ArrowLeft className="mr-2 h-4 w-4" /> {/* Oder LayoutGrid */}
+                  Zurück zu den Kategorien
                 </Link>
               </Button>
-            </div>
-          )}
+            )}
+          </div>
+          {/* --- ENDE ANGEPASST --- */}
+
 
           {/* Fehlerbehandlung und Anzeige der gefilterten Pakete */}
           {packagesError ? (
