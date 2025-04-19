@@ -1,4 +1,4 @@
-// app/(dashboard)/prompt/[slug]/page.js - Padding für Mobile angepasst
+// app/(dashboard)/prompt/[slug]/page.js - Padding für Mobile entfernt
 
 import { createClient } from '@/lib/supabase/server'; // Dein Pfad
 import { notFound, redirect } from 'next/navigation';
@@ -39,9 +39,9 @@ export default async function PromptDetailPage({ params }) {
 
   // --- Rendering-Teil ---
   return (
-    // *** HIER WURDE DAS PADDING ANGEPASST ***
-    <div className="container mx-auto py-8 px-2 sm:px-4 md:px-6 lg:px-8"> {/* px-2 für mobile, sm:px-4 für etwas größere */}
-      <div className="mb-6">
+    // *** HIER WURDE DAS PADDING FÜR MOBILE ENTFERNT ***
+    <div className="container mx-auto py-8 px-0 sm:px-4 md:px-6 lg:px-8"> {/* px-0 für mobile, sm:px-4 für größere */}
+      <div className="mb-6 px-4 sm:px-0"> {/* Füge hier Padding hinzu, wenn der Button nicht ganz am Rand kleben soll */}
         <Button variant="outline" size="sm" asChild>
           <Link href="/meine-prompts">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -49,17 +49,20 @@ export default async function PromptDetailPage({ params }) {
           </Link>
         </Button>
       </div>
-      {/* Die Card selbst hat normalerweise kein horizontales Padding,
-          aber falls doch, könnte man es hier auch anpassen.
-          Aktuell sollte die Anpassung des äußeren Divs ausreichen. */}
-      <Card>
-        <CardHeader>
+      {/* Die Card selbst sollte jetzt auf Mobilgeräten die volle Breite nutzen.
+          Wir geben der Card explizit kein horizontales Padding,
+          damit der Inhalt (PromptInteraction) den Platz nutzen kann. */}
+      <Card className="rounded-none sm:rounded-lg border-x-0 sm:border-x"> {/* Entferne Rundung und Rand auf Mobile */}
+        <CardHeader className="px-4 sm:px-6"> {/* Padding für Header beibehalten */}
           <CardTitle className="text-2xl">{name}</CardTitle>
           {description && (
              <CardDescription>{description}</CardDescription>
           )}
         </CardHeader>
-        <CardContent className="pt-0 sm:pt-2 md:pt-4">
+        {/* WICHTIG: Das Padding für CardContent wird jetzt entfernt,
+            damit PromptInteraction die volle Breite nutzen kann.
+            PromptInteraction muss ggf. internes Padding haben. */}
+        <CardContent className="pt-0 sm:pt-2 md:pt-4 px-0 sm:px-6"> {/* Padding für Content auf Mobile entfernt */}
           <PromptInteraction variants={prompt_variants || []} slug={slug} />
         </CardContent>
       </Card>
