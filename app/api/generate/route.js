@@ -1,4 +1,4 @@
-// app/api/generate/route.js - Angepasst für individuellen Systemprompt pro Variante
+// app/api/generate/route.js - Angepasst für Testuser-Zugriff
 
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
@@ -7,11 +7,16 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 
 const FREE_PROMPT_SLUG = 'test';
 
+// --- NEU: Definiere die E-Mail deines Testusers ---
+const TEST_USER_EMAIL = 'danadi@gmx.de'; // <-- TRAGE HIER DEINE TEST-E-MAIL EIN!
+// --- Ende NEU ---
+
 const supabaseService = createServiceRoleClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// ... (Rest der Konstanten: openai, OPENAI_MODEL, DEFAULT_SYSTEM_PROMPT etc. bleiben gleich) ...
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -20,16 +25,13 @@ const OPENAI_MODEL = 'gpt-4o-mini';
 const DEFAULT_TEMPERATURE = 0.7;
 const DEFAULT_MAX_TOKENS = 1500;
 
-// --- NEU: Standard-Systemprompt als Konstante definieren ---
 const DEFAULT_SYSTEM_PROMPT = `Du bist ein professioneller Textassistent für moderne Kommunikation.
 Formuliere auf Basis einer stilistischen Vorlage und Platzhalterdaten einen eigenständigen, stimmigen Text.
 Die Vorlage dient nur als stilistischer Rahmen – du darfst Sätze neu bauen, kürzen oder umstellen.
 Wichtig: Wiederhole die Platzhalter nie wörtlich, sondern wähle passende Formulierungen mit Tiefe und Wirkung.
 Berücksichtige unbedingt den gewählten Tonfall (z. B. emotional, sachlich, kreativ) und schreibe so, wie Menschen heute auf Social Media, im Beruf oder im Alltag kommunizieren: klar, nahbar, prägnant.
 Ziel ist ein kurzer, runder Text, der beim Lesen überzeugt – nicht einfach eine Ausfüllhilfe.`;
-// --- Ende NEU ---
 
-// System Prompt für Verfeinerung (bleibt separat, da andere Logik)
 const REFINE_SYSTEM_PROMPT = "Du bist ein hilfreicher Assistent. Deine Aufgabe ist es, einen vorhandenen Text basierend auf zusätzlichen Anweisungen oder Informationen zu überarbeiten und zu verbessern. Behalte den ursprünglichen Zweck und Ton bei, sofern nicht anders angewiesen.";
 
 
@@ -40,14 +42,14 @@ export async function POST(request) {
   let hasAccess = false;
 
   try {
-    // 1. Anfragedaten lesen
+    // 1. Anfragedaten lesen (bleibt gleich)
     const body = await request.json();
     const {
         action = 'generate',
         promptPackageSlug,
         variantIndex,
         placeholders,
-        tone, // Wird aktuell nicht direkt im Systemprompt verwendet, aber ggf. im User-Prompt oder Template
+        tone,
         originalText,
         additionalInfo
     } = body;
@@ -55,7 +57,7 @@ export async function POST(request) {
     console.log("Empfangene Aktion:", action);
     console.log("Empfangene Daten:", { promptPackageSlug, variantIndex, action });
 
-    // Validierungen (wie vorher)
+    // Validierungen (bleiben gleich)
     if (['generate', 'rephrase'].includes(action)) {
         if (!promptPackageSlug || typeof variantIndex !== 'number' || variantIndex < 0 || !placeholders || typeof placeholders !== 'object') {
            return NextResponse.json({ error: 'Ungültige Eingabedaten für Generierung/Neuformulierung.' }, { status: 400 });
@@ -67,7 +69,7 @@ export async function POST(request) {
         }
     }
 
-    // 2. Authentifizierung/Autorisierung (wie vorher)
+    // 2. Authentifizierung/Autorisierung (ANGEPASST)
     const isFreePromptRequest = promptPackageSlug === FREE_PROMPT_SLUG && action !== 'refine';
 
     if (isFreePromptRequest) {
@@ -85,33 +87,58 @@ export async function POST(request) {
       user = loggedInUser;
       console.log(`Authentifiziert als: ${user.email}`);
 
-      // Zugriffsprüfung (wie vorher, TODO bleibt bestehen)
-      if (action !== 'refine' && promptPackageSlug) {
-          console.warn("WARNUNG: Zugriffsprüfung für gekaufte Pakete ist noch nicht implementiert!");
-          hasAccess = true; // Temporär
-          if (!hasAccess) {
-             console.log(`Zugriff verweigert für User ${user.email} auf Paket ${promptPackageSlug}.`);
-             return NextResponse.json({ error: 'Kein Zugriff auf dieses Prompt-Paket.' }, { status: 403 });
-          }
-          console.log(`Zugriff gewährt für User ${user.email} auf Paket ${promptPackageSlug}.`);
-      } else if (action === 'refine') {
-          hasAccess = true;
-          console.log(`Zugriff für Refine-Aktion gewährt für User ${user.email}.`);
+      // --- NEUE LOGIK: Testuser-Prüfung ---
+      if (user.email === TEST_USER_EMAIL) {
+        hasAccess = true;
+        console.log(`Zugriff gewährt: Spezieller Testuser (${user.email}).`);
       } else {
-          return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 });
+        // --- Bestehende/Zukünftige Logik für normale User ---
+        // Zugriffsprüfung (TODO bleibt bestehen)
+        if (action !== 'refine' && promptPackageSlug) {
+            console.warn("WARNUNG: Zugriffsprüfung für gekaufte Pakete ist noch nicht implementiert!");
+            // TODO: Implementiere hier die echte Prüfung, ob der User das Paket gekauft hat.
+            // Beispiel (pseudocode):
+            // const { data: purchaseData, error: purchaseError } = await supabaseService
+            //   .from('user_purchases') // Annahme: Tabelle mit Käufen
+            //   .select('package_slug')
+            //   .eq('user_id', user.id)
+            //   .eq('package_slug', promptPackageSlug)
+            //   .maybeSingle();
+            //
+            // if (purchaseError) { /* Fehlerbehandlung */ }
+            // hasAccess = !!purchaseData; // Zugriff, wenn Kauf vorhanden
+
+            hasAccess = true; // Temporär, bis echte Prüfung implementiert ist
+
+            if (!hasAccess) {
+               console.log(`Zugriff verweigert für User ${user.email} auf Paket ${promptPackageSlug}.`);
+               return NextResponse.json({ error: 'Kein Zugriff auf dieses Prompt-Paket.' }, { status: 403 });
+            }
+            console.log(`Zugriff gewährt für User ${user.email} auf Paket ${promptPackageSlug}.`);
+        } else if (action === 'refine') {
+            // Refine ist generell erlaubt für eingeloggte User (oder nur für Testuser/Käufer?)
+            // Aktuell: Erlaubt für alle eingeloggten User (inkl. Testuser durch obige Prüfung)
+            hasAccess = true;
+            console.log(`Zugriff für Refine-Aktion gewährt für User ${user.email}.`);
+        } else {
+            // Sollte nicht passieren, wenn Validierung oben greift
+            return NextResponse.json({ error: 'Ungültige Anfrage nach Authentifizierung.' }, { status: 400 });
+        }
+        // --- Ende Bestehende/Zukünftige Logik ---
       }
+      // --- Ende NEUE LOGIK ---
     }
 
-    // 3. OpenAI Prompt vorbereiten (abhängig von der Aktion)
+    // 3. OpenAI Prompt vorbereiten (bleibt gleich)
     if (hasAccess) {
-      let systemPrompt = ""; // Wird jetzt dynamisch gesetzt
+      let systemPrompt = "";
       let userPrompt = "";
 
       if (action === 'generate' || action === 'rephrase') {
-        // Paketdaten und Variante holen
+        // ... (Code zum Holen der Variante und Bestimmen des System-Prompts bleibt gleich) ...
         const { data: packageData, error: packageError } = await supabaseService
           .from('prompt_packages')
-          .select('prompt_variants') // Stellt sicher, dass alle Felder der Varianten geholt werden
+          .select('prompt_variants')
           .eq('slug', promptPackageSlug)
           .single();
 
@@ -138,26 +165,17 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Das Template für diese Variante ist leer.' }, { status: 500 });
         }
 
-        // --- NEUE LOGIK: Systemprompt bestimmen ---
-        // Nutze den spezifischen Systemprompt der Variante, falls vorhanden, sonst den Default.
         systemPrompt = selectedVariant.system_prompt || DEFAULT_SYSTEM_PROMPT;
         console.log(`Verwendeter Systemprompt für ${promptPackageSlug} (Variante ${variantIndex}): ${selectedVariant.system_prompt ? 'Individuell' : 'Standard'}`);
 
-        // Spezifische Anpassung für 'rephrase' (optional, kann auch im individuellen Prompt stehen)
         if (action === 'rephrase') {
-            // Fügt die Anweisung hinzu, egal ob individueller oder Standard-Prompt verwendet wird.
-            // Alternativ könnte man dies nur hinzufügen, wenn der Standard-Prompt verwendet wird,
-            // oder erwarten, dass die Rephrase-Anweisung Teil des individuellen Prompts ist.
             systemPrompt += "\nFormuliere den folgenden Text neu, behalte aber den Kerninhalt und den gewünschten Ton bei. Sei dabei kreativ.";
             console.log("Systemprompt für Rephrase angepasst.");
         }
-        // --- Ende NEUE LOGIK ---
 
-        // User Prompt mit Platzhaltern füllen (wie vorher)
         let filledTemplate = templateString;
         for (const key in placeholders) {
-            // Sicherstellen, dass der Platzhalter auch wirklich im Template existiert, um unnötige Ersetzungen zu vermeiden
-            const placeholderRegex = new RegExp(`\\{\\{${key}\\}\\}`, 'g'); // 'g' für globale Ersetzung
+            const placeholderRegex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
             if (placeholderRegex.test(filledTemplate)) {
                 filledTemplate = filledTemplate.replace(placeholderRegex, String(placeholders[key]));
             } else {
@@ -167,9 +185,8 @@ export async function POST(request) {
         userPrompt = filledTemplate;
 
       } else if (action === 'refine') {
-        // System Prompt für Verfeinerung (bleibt wie es war)
+        // ... (Code für Refine bleibt gleich) ...
         systemPrompt = REFINE_SYSTEM_PROMPT;
-        // User Prompt für Verfeinerung (bleibt wie es war)
         userPrompt = `Ursprünglicher Text:\n"""\n${originalText}\n"""\n\nZusätzliche Anweisungen/Informationen:\n"""\n${additionalInfo}\n"""\n\nBitte gib nur den überarbeiteten Text zurück.`;
         console.log("Systemprompt für Refine gesetzt.");
 
@@ -177,11 +194,8 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Unbekannte Aktion.' }, { status: 400 });
       }
 
-      // 4. OpenAI API aufrufen
+      // 4. OpenAI API aufrufen (bleibt gleich)
       console.log(`Rufe OpenAI API für Aktion '${action}' auf...`);
-      // console.log("System Prompt:", systemPrompt); // Zum Debuggen ggf. einkommentieren
-      // console.log("User Prompt:", userPrompt); // Zum Debuggen ggf. einkommentieren
-
       const completion = await openai.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [
@@ -192,7 +206,7 @@ export async function POST(request) {
         max_tokens: DEFAULT_MAX_TOKENS,
       });
 
-      // 5. Ergebnis extrahieren und zurückgeben
+      // 5. Ergebnis extrahieren und zurückgeben (bleibt gleich)
       const aiResponseContent = completion.choices?.[0]?.message?.content;
       if (!aiResponseContent) {
           console.error('Keine gültige Antwort von OpenAI erhalten:', completion);
@@ -207,8 +221,9 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Zugriff nicht erlaubt.' }, { status: 403 });
 
   } catch (error) {
-     // Allgemeine Fehlerbehandlung (wie vorher)
+     // Allgemeine Fehlerbehandlung (bleibt gleich)
      console.error("Schwerwiegender Fehler in /api/generate:", error);
+     // ... (Rest der Fehlerbehandlung) ...
      if (error.response) {
          console.error("OpenAI API Fehler Details:", error.response.data);
          return NextResponse.json({ error: `API Fehler: ${error.response.statusText || 'Unbekannt'}` }, { status: error.response.status || 500 });
@@ -216,7 +231,6 @@ export async function POST(request) {
      if (error instanceof SyntaxError) {
          return NextResponse.json({ error: 'Ungültiges JSON im Request Body.' }, { status: 400 });
      }
-     // Log des spezifischen Fehlers für bessere Diagnose
      console.error("Fehlermeldung:", error.message);
      console.error("Stack Trace:", error.stack);
      return NextResponse.json({ error: `Interner Serverfehler: ${error.message}` }, { status: 500 });
