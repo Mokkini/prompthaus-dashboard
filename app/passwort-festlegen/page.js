@@ -18,46 +18,65 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2, CheckCircle2 } from 'lucide-react'; // CheckCircle2 hinzugefügt
 
 export default function SetPasswordPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [initializing, setInitializing] = useState(true);
+  const [initializing, setInitializing] = useState(true); // Startet als true
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Invite-Token aus URL-Hash parsen und Session setzen
+  // --- Entfernt: useEffect zum Parsen des Hash ---
+
+  // --- NEU: useEffect zur Prüfung des Auth-Status und Flags ---
   useEffect(() => {
-    async function init() {
-      const hash = window.location.hash;
-      if (hash) {
-        const params = new URLSearchParams(hash.substring(1));
-        const access_token = params.get('access_token');
-        const refresh_token = params.get('refresh_token');
-        if (access_token && refresh_token) {
-          const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-          if (error) {
-            console.error('Fehler beim Setzen der Session:', error.message);
-            setErrorMsg('Ungültiger oder abgelaufener Einladungslink.');
-          } else {
-            // URL-Hash entfernen
-            window.history.replaceState(null, '', window.location.pathname);
-          }
-        } else {
-          setErrorMsg('Einladungslink enthält keine gültigen Token.');
-        }
-      } else {
-        setErrorMsg('Kein Einladungs-Token in der URL gefunden.');
+    async function checkAuthAndFlag() {
+      // Kurze Verzögerung, um Supabase Zeit zu geben, die Session nach dem Hash-Parsing im Wrapper zu aktualisieren
+      // Dies ist ein Workaround und kann ggf. angepasst oder entfernt werden, wenn router.refresh() im Wrapper ausreicht.
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log('[SetPasswordPage] Check Auth: Session vorhanden?', !!session);
+
+      if (sessionError) {
+          console.error('[SetPasswordPage] Fehler beim Holen der Session:', sessionError.message);
+          // Leite zu Login, wenn Session nicht geholt werden kann
+          router.replace('/login');
+          return;
       }
+
+      if (!session) {
+        console.log('[SetPasswordPage] Keine Session gefunden, leite zu /login');
+        router.replace('/login');
+        return; // Frühzeitiger Ausstieg
+      }
+
+      // Session ist vorhanden, prüfe Metadaten
+      const needsSetup = session.user?.user_metadata?.needs_password_setup;
+      console.log('[SetPasswordPage] Check Auth: needs_password_setup Flag:', needsSetup);
+
+      if (needsSetup !== true) {
+        console.log('[SetPasswordPage] Flag nicht gesetzt oder falsch, leite zu /meine-prompts');
+        // Leite zu einer Standardseite nach dem Login weiter, wenn das Flag nicht (mehr) gesetzt ist.
+        router.replace('/meine-prompts');
+        return; // Frühzeitiger Ausstieg
+      }
+
+      // Alles ok, Initialisierung abschließen
+      console.log('[SetPasswordPage] Session und Flag korrekt, zeige Seite an.');
       setInitializing(false);
     }
-    init();
-  }, [supabase]);
+
+    checkAuthAndFlag();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, router]); // Führe dies nur einmal beim Mount aus (und bei Supabase/Router-Änderung)
+  // --- Ende NEU ---
+
 
   const handleSetPassword = async (event) => {
     event.preventDefault();
@@ -68,8 +87,9 @@ export default function SetPasswordPage() {
       setErrorMsg('Die eingegebenen Passwörter stimmen nicht überein.');
       return;
     }
-    if (!password) {
-      setErrorMsg('Bitte gib ein Passwort ein.');
+    // Mindestlänge prüfen (Supabase Standard ist 6)
+    if (!password || password.length < 6) {
+      setErrorMsg('Das Passwort muss mindestens 6 Zeichen lang sein.');
       return;
     }
 
@@ -79,38 +99,54 @@ export default function SetPasswordPage() {
       const { error: passwordError } = await supabase.auth.updateUser({ password });
       if (passwordError) {
         console.error('Fehler beim Setzen des Passworts:', passwordError);
-        setErrorMsg(`Passwort konnte nicht gesetzt werden: ${passwordError.message}`);
+        // Gib eine benutzerfreundlichere Fehlermeldung aus
+        let displayError = `Passwort konnte nicht gesetzt werden.`;
+        if (passwordError.message.includes("Password should be at least 6 characters")) {
+            displayError = "Das Passwort muss mindestens 6 Zeichen lang sein.";
+        } else if (passwordError.message.includes("Password validation failed")) {
+             displayError = `Passwort-Validierung fehlgeschlagen: ${passwordError.message}`;
+        } else {
+             displayError = `Fehler: ${passwordError.message}`;
+        }
+        setErrorMsg(displayError);
         setLoading(false);
         return;
       }
 
-      // Metadaten-Flag zurücksetzen
+      // Metadaten-Flag zurücksetzen (wichtig!)
       const { error: metaError } = await supabase.auth.updateUser({
-        data: { needs_password_setup: false }
+        data: { needs_password_setup: false } // Setze es explizit auf false
       });
       if (metaError) {
-        console.error('Fehler beim Zurücksetzen des Flags:', metaError);
+        // Das ist nicht kritisch für den User, aber logge es
+        console.error('Fehler beim Zurücksetzen des Flags "needs_password_setup":', metaError);
+        // Optional: Sende diesen Fehler an ein Monitoring-Tool
+      } else {
+         console.log('[SetPasswordPage] Flag "needs_password_setup" erfolgreich auf false gesetzt.');
       }
 
-      setSuccessMsg('Dein Passwort wurde erfolgreich festgelegt! Weiterleitung...');
+      setSuccessMsg('Dein Passwort wurde erfolgreich festgelegt! Du wirst in Kürze weitergeleitet...');
       setLoading(false);
-      setTimeout(() => router.push('/meine-prompts'), 2000);
+      // Gib dem User kurz Zeit, die Nachricht zu lesen
+      setTimeout(() => router.push('/meine-prompts'), 2500);
     } catch (err) {
-      console.error('Unerwarteter Fehler:', err);
+      console.error('Unerwarteter Fehler beim Passwortsetzen:', err);
       setErrorMsg('Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es später erneut.');
       setLoading(false);
     }
   };
 
+  // Ladeanzeige, während die Auth-Prüfung läuft
   if (initializing) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="animate-spin h-6 w-6" />
-        <span className="ml-2">Lade Session…</span>
+        <span className="ml-2">Prüfe Berechtigung…</span>
       </div>
     );
   }
 
+  // Das eigentliche Formular
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-950">
       <Card className="w-full max-w-md">
@@ -130,9 +166,10 @@ export default function SetPasswordPage() {
               </Alert>
             )}
             {successMsg && (
-              <Alert variant="default">
-                <AlertTitle>Erfolg</AlertTitle>
-                <AlertDescription>{successMsg}</AlertDescription>
+              <Alert variant="default" className="bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-700">
+                 <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                 <AlertTitle className="text-green-800 dark:text-green-200">Erfolg!</AlertTitle>
+                 <AlertDescription className="text-green-700 dark:text-green-300">{successMsg}</AlertDescription>
               </Alert>
             )}
             <div className="space-y-2">
