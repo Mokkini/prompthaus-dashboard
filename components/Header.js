@@ -1,4 +1,5 @@
-// components/Header.js
+// components/Header.js - Korrigiert für React.Children.only Fehler
+
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import {
@@ -9,11 +10,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { User, LogOut, Menu } from 'lucide-react';
-import { createClient } from '@/lib/supabase/server'; // Wird nur für Server Action benötigt
+import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet";
+import { User, LogOut, Menu, Home } from 'lucide-react';
+import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import DashboardNav from './DashboardNav';
+import { cn } from '@/lib/utils'; // Importiere cn für Klassen
 
 // Die Komponente akzeptiert jetzt den 'user' als Prop
 export default function Header({ user }) {
@@ -23,7 +25,6 @@ export default function Header({ user }) {
     'use server';
     const supabase = createClient();
     await supabase.auth.signOut();
-    // Wichtig: return redirect leitet um NACHDEM die Action erfolgreich war
     return redirect('/login');
   };
 
@@ -42,8 +43,26 @@ export default function Header({ user }) {
              <div className="p-4 border-b">
                <h2 className="text-lg font-semibold">PromptHaus Menü</h2>
              </div>
+             {/* --- KORRIGIERT: Link zur Startseite --- */}
+             <div className="p-2 border-b">
+                <SheetClose asChild>
+                    <Link
+                        href="/"
+                        // Styling ähnlich wie Button variant="ghost"
+                        className={cn(
+                            "flex items-center w-full justify-start rounded-md px-3 py-2 text-sm font-medium",
+                            "hover:bg-accent hover:text-accent-foreground",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        )}
+                    >
+                        <Home className="mr-2 h-4 w-4" />
+                        Zur Startseite
+                    </Link>
+                </SheetClose>
+             </div>
+             {/* --- Ende KORREKTUR --- */}
              <div className="flex-grow overflow-y-auto">
-                 <DashboardNav />
+                 <DashboardNav /> {/* DashboardNav bleibt hier */}
              </div>
           </SheetContent>
         </Sheet>
@@ -54,8 +73,8 @@ export default function Header({ user }) {
         </div>
       </div>
 
-      {/* User Dropdown - Nur rendern, wenn User vorhanden ist */}
-      {user && ( // <-- RENDERT NUR WENN USER DA IST
+      {/* User Dropdown (unverändert) */}
+      {user && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon">
@@ -64,10 +83,8 @@ export default function Header({ user }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {/* Angepasstes Label mit E-Mail */}
             <DropdownMenuLabel>
               <span className="block text-sm font-medium">Mein Konto</span>
-              {/* ZEIGT DIE E-MAIL AN */}
               <span className="block text-xs text-muted-foreground truncate">
                 {user.email}
               </span>
@@ -76,7 +93,6 @@ export default function Header({ user }) {
             <DropdownMenuItem asChild><Link href="/profil">Profil</Link></DropdownMenuItem>
             <DropdownMenuItem asChild><Link href="/einstellungen">Einstellungen</Link></DropdownMenuItem>
             <DropdownMenuSeparator />
-            {/* Logout Form */}
             <form action={handleLogout}>
               <Button type="submit" variant="ghost" className="w-full text-left justify-start font-normal px-2 py-1.5 text-sm relative flex cursor-default select-none items-center rounded-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-accent">
                 <LogOut className="mr-2 h-4 w-4" />
@@ -85,7 +101,7 @@ export default function Header({ user }) {
             </form>
           </DropdownMenuContent>
         </DropdownMenu>
-      )} {/* <-- ENDE BEDINGTES RENDERN */}
+      )}
     </header>
   );
 }

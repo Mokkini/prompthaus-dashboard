@@ -1,16 +1,16 @@
-// components/DashboardNav.js
+// components/DashboardNav.js - Ohne Shop-Button
+
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
-import { Package, Settings, User, ExternalLink } from 'lucide-react';
+import { Package, Settings, User } from 'lucide-react'; // ExternalLink entfernt
 
 export default function DashboardNav() {
-    // TODO: Lade die Shopify URL dynamisch (z.B. aus .env)
-    const shopifyUrl = "https://prompthaus.de";
+    // Die Variable shopifyUrl wird nicht mehr benötigt
 
     return (
-        <> {/* React Fragment, um mehrere Elemente zurückzugeben */}
+        <> {/* React Fragment */}
             {/* Hauptnavigation */}
-            <nav className="flex flex-col space-y-1 px-2 py-4"> {/* Abstand und Padding angepasst */}
+            <nav className="flex flex-col space-y-1 px-2 py-4 flex-grow"> {/* flex-grow hinzugefügt, damit es den Platz einnimmt */}
                 <Button variant="ghost" className="w-full justify-start" asChild>
                     <Link href="/meine-prompts">
                         <Package className="mr-2 h-4 w-4" />
@@ -31,15 +31,8 @@ export default function DashboardNav() {
                 </Button>
             </nav>
 
-            {/* Shopify Link separat, ggf. unten */}
-             <div className="mt-auto px-2 py-4"> {/* Stellt sicher, dass er unten ist */}
-                <Button variant="outline" className="w-full justify-start" asChild>
-                    <Link href={shopifyUrl} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Zum PromptHaus Shop
-                    </Link>
-                </Button>
-            </div>
+            {/* Der Shopify Link wurde entfernt */}
+            {/* <div className="mt-auto px-2 py-4"> ... </div> */}
         </>
     );
 }
