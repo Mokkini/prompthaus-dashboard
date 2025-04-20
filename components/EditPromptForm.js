@@ -94,7 +94,7 @@ export default function EditPromptForm({ promptPackage }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* ... (Felder für name, slug, category, description bleiben gleich) ... */}
+      {/* Felder für name, slug, category, description */}
       <div className="space-y-2">
         <Label htmlFor="name">Paket-Name</Label>
         <Input type="text" id="name" name="name" required value={name} onChange={(e) => setName(e.target.value)} />
@@ -114,6 +114,7 @@ export default function EditPromptForm({ promptPackage }) {
           <option value="Beruf" />
           <option value="Eltern" />
           <option value="Emotionen" />
+          {/* Füge bei Bedarf weitere Kategorien hinzu */}
         </datalist>
       </div>
 
@@ -145,7 +146,7 @@ export default function EditPromptForm({ promptPackage }) {
         {jsonError && <p className="text-sm font-medium text-destructive">{jsonError}</p>}
       </div>
 
-      {/* Feedback Alert (unverändert) */}
+      {/* Feedback Alert */}
       {message && (
         <Alert variant={messageType === 'error' ? 'destructive' : 'default'} className={messageType === 'success' ? 'border-green-500 text-green-700 dark:text-green-300 dark:border-green-700 [&>svg]:text-green-700' : ''}>
           {messageType === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
@@ -154,7 +155,7 @@ export default function EditPromptForm({ promptPackage }) {
         </Alert>
       )}
 
-      {/* Button (unverändert) */}
+      {/* Button */}
       <Button type="submit" disabled={isSubmitting || !!jsonError} className="w-full sm:w-auto">
         {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {isSubmitting ? 'Speichere...' : 'Änderungen speichern'}

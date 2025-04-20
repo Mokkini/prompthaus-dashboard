@@ -1,4 +1,4 @@
-// components/PromptInteraction.js - Mit Rephrase/Refine und Share Buttons
+// components/PromptInteraction.js - Mit Rephrase/Refine, Share Buttons und Freitext-Tonalität
 
 "use client";
 
@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+// Select wird nicht mehr benötigt für Tonalität
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 // Icons importieren
 import { Loader2, AlertCircle, Copy, Check, Share2, MessageSquare, Linkedin, Facebook, RefreshCw, Info } from "lucide-react";
@@ -24,7 +25,7 @@ export default function PromptInteraction({ variants, slug }) {
   const [selectedVariantIndex, setSelectedVariantIndex] = useState(0);
   const [currentPlaceholderInfo, setCurrentPlaceholderInfo] = useState([]);
   const [placeholderValues, setPlaceholderValues] = useState({});
-  const [selectedTone, setSelectedTone] = useState('');
+  const [selectedTone, setSelectedTone] = useState(''); // Bleibt als State für das Input-Feld
   const [generatedText, setGeneratedText] = useState('');
   const [loading, setLoading] = useState(false); // Für initiale Generierung
   const [errorMsg, setErrorMsg] = useState('');
@@ -58,7 +59,7 @@ export default function PromptInteraction({ variants, slug }) {
       // Reset States
       setPlaceholderValues({});
       setGeneratedText('');
-      setSelectedTone('');
+      setSelectedTone(''); // Tonalität zurücksetzen
       setErrorMsg('');
       setIsCopied(false);
       setShowRefineInput(false); // Refine-Input zurücksetzen
@@ -143,37 +144,38 @@ export default function PromptInteraction({ variants, slug }) {
     }
   };
 
-  // Handler für initiale Generierung
+  // Handler für initiale Generierung (Prüfung auf selectedTone entfernt/angepasst)
   const handleInitialGenerate = () => {
     const expected = currentPlaceholderInfo.map(p => typeof p === 'string' ? p : p.name);
     const missing = expected.filter(name => !placeholderValues[name]?.trim());
     if (missing.length > 0) {
-      setErrorMsg(`Bitte fülle alle Platzhalter aus: ${missing.join(', ')}`);
+      // Formatierte Namen für bessere Lesbarkeit
+      setErrorMsg(`Bitte fülle alle Platzhalter aus: ${missing.map(formatPlaceholderName).join(', ')}`);
       return;
     }
-    if (currentVariant?.tones?.length > 0 && !selectedTone) {
-      setErrorMsg("Bitte wähle eine Tonalität aus.");
-      return;
-    }
+    // Entfernt: Prüfung, ob ein Ton aus der Liste ausgewählt wurde.
+    // Optional: Könnte prüfen, ob das Feld leer ist, falls gewünscht.
 
     const payload = {
       action: 'generate',
       promptPackageSlug: slug,
       variantIndex: selectedVariantIndex,
       placeholders: placeholderValues,
-      ...(currentVariant?.tones?.length > 0 && { tone: selectedTone })
+      // Füge den Ton nur hinzu, wenn er nicht leer ist
+      ...(selectedTone.trim() && { tone: selectedTone.trim() })
     };
     callGenerateApi(payload, setLoading);
   };
 
-  // Handler für "Neu formulieren"
+  // Handler für "Neu formulieren" (Payload-Logik angepasst)
   const handleRephrase = () => {
     const payload = {
       action: 'rephrase',
       promptPackageSlug: slug,
       variantIndex: selectedVariantIndex,
       placeholders: placeholderValues,
-      ...(currentVariant?.tones?.length > 0 && { tone: selectedTone })
+      // Füge den Ton nur hinzu, wenn er nicht leer ist
+      ...(selectedTone.trim() && { tone: selectedTone.trim() })
     };
     callGenerateApi(payload, setIsRefining);
   };
@@ -183,7 +185,7 @@ export default function PromptInteraction({ variants, slug }) {
     setShowRefineInput(!showRefineInput);
   };
 
-  // Handler für "Verfeinern"
+  // Handler für "Verfeinern" (Payload-Logik angepasst)
   const handleRefine = () => {
     if (!additionalInfo.trim()) {
       setErrorMsg("Bitte gib Zusatzinformationen für die Verfeinerung ein.");
@@ -197,7 +199,8 @@ export default function PromptInteraction({ variants, slug }) {
       promptPackageSlug: slug, // Kontext mitsenden
       variantIndex: selectedVariantIndex,
       placeholders: placeholderValues,
-      ...(currentVariant?.tones?.length > 0 && { tone: selectedTone })
+      // Füge den Ton nur hinzu, wenn er nicht leer ist
+      ...(selectedTone.trim() && { tone: selectedTone.trim() })
     };
     callGenerateApi(payload, setIsRefining);
   };
@@ -248,27 +251,22 @@ export default function PromptInteraction({ variants, slug }) {
               )}
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Tonalität */}
-              {currentVariant.tones && currentVariant.tones.length > 0 && (
-                 <div className="space-y-2">
-                   <p className="text-muted-foreground text-sm">
-                     <strong>Empfohlene Tonalität:</strong> {currentVariant.tones.join(', ')}
-                   </p>
-                   <div>
-                     <Label htmlFor={`tone-${selectedVariantIndex}`}>Tonalität auswählen:</Label>
-                     <Select value={selectedTone} onValueChange={setSelectedTone}>
-                       <SelectTrigger id={`tone-${selectedVariantIndex}`} className="mt-1">
-                         <SelectValue placeholder="Bitte wählen..." />
-                       </SelectTrigger>
-                       <SelectContent>
-                         {currentVariant.tones.map(tone => (
-                           <SelectItem key={tone} value={tone}>{tone}</SelectItem>
-                         ))}
-                       </SelectContent>
-                     </Select>
-                   </div>
-                 </div>
-              )}
+
+              {/* --- ANPASSUNG: Tonalität als Freitextfeld --- */}
+              <div className="space-y-1.5">
+                <Label htmlFor={`tone-${selectedVariantIndex}`}>Gewünschte Tonalität (optional):</Label>
+                <Input
+                  id={`tone-${selectedVariantIndex}`}
+                  value={selectedTone}
+                  onChange={(e) => setSelectedTone(e.target.value)} // Direkte State-Aktualisierung
+                  placeholder="z.B. sachlich, förmlich, emotional, humorvoll,..."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Beschreibe den gewünschten Tonfall oder lasse das Feld leer für den Standardton.
+                </p>
+              </div>
+              {/* --- ENDE ANPASSUNG --- */}
+
               {/* Platzhalter */}
               <div>
                 <h3 className="text-base font-semibold mb-3">Platzhalter ausfüllen:</h3>

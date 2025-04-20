@@ -64,7 +64,7 @@ export default function AddPromptForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* ... (Felder für name, slug, category, description bleiben gleich) ... */}
+      {/* Felder für name, slug, category, description */}
        <div className="space-y-2">
         <Label htmlFor="name">Paket-Name</Label>
         <Input type="text" id="name" name="name" required />
@@ -116,7 +116,7 @@ export default function AddPromptForm() {
          {/* --- Ende Aktualisierung --- */}
       </div>
 
-      {/* Feedback-Nachricht als Alert (unverändert) */}
+      {/* Feedback-Nachricht als Alert */}
       {message && (
         <Alert variant={messageType === 'error' ? 'destructive' : 'default'} className={messageType === 'success' ? 'border-green-500 text-green-700 dark:text-green-300 dark:border-green-700 [&>svg]:text-green-700' : ''}>
            {messageType === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
@@ -127,7 +127,7 @@ export default function AddPromptForm() {
         </Alert>
       )}
 
-       {/* Button (unverändert) */}
+       {/* Button */}
       <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
          {isSubmitting ? 'Speichere...' : 'Prompt-Paket erstellen'}
