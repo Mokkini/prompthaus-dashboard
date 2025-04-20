@@ -4,7 +4,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image'; // <-- NEU: Image importieren
+import Image from 'next/image';
 import { login } from '../actions';
 
 // Shadcn UI Komponenten
@@ -12,9 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"; // Card importieren
 import { AlertCircle, Loader2 } from 'lucide-react';
-// Ggf. Icons für OAuth Buttons (optional)
-// import { Icons } from "@/components/icons"
 
 export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState('');
@@ -29,9 +28,7 @@ export default function LoginPage() {
     startTransition(async () => {
       const result = await login(formData);
       if (result.success) {
-        // console.log("Action success, redirecting to:", result.redirectTo); // Für Live-Betrieb entfernt
         router.push(result.redirectTo);
-        // router.refresh(); // Optional
       } else {
         console.error("Action error:", result.message);
         setErrorMsg(result.message || 'Ein unbekannter Fehler ist aufgetreten.');
@@ -40,120 +37,79 @@ export default function LoginPage() {
   };
 
   return (
-    // Hauptcontainer - nimmt volle Höhe/Breite, Grid-Layout auf lg-Screens
-    <div className="container relative min-h-screen flex-col items-center justify-center grid lg:max-w-none lg:grid-cols-2 lg:px-0">
-      {/* Linke Spalte (nur auf lg+ sichtbar) - Branding/Bild etc. */}
-      <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
-        {/* Hintergrundbild oder Farbe */}
-        <div className="absolute inset-0 bg-zinc-900" />
-
-        {/* --- Logo oder Branding mit Link zur Startseite --- */}
-        <Link href="/" className="relative z-20 flex items-center text-lg font-medium hover:opacity-80 transition-opacity">
-          {/* --- SVG ERSETZT DURCH IMAGE --- */}
-          <Image
-            src="/prompthaus-logo.png" // Pfad zum Logo im public-Ordner
-            alt="PromptHaus Logo"
-            width={150} // Breite anpassen nach Bedarf
-            height={38} // Höhe anpassen nach Bedarf (Seitenverhältnis beachten)
-            priority // Wichtig für LCP (Largest Contentful Paint)
-            className="mr-2" // Optional: Abstand zum Text
-          />
-          {/* --- ENDE ERSETZUNG --- */}
-          {/* Der Text "PromptHaus" kann bleiben oder entfernt werden, je nach Design */}
-          {/* PromptHaus */}
-        </Link>
-        {/* --- Ende Logo/Branding mit Link --- */}
-
-        {/* Optional: Zitat oder Slogan unten */}
-        <div className="relative z-20 mt-auto">
-          <blockquote className="space-y-2">
-            <p className="text-lg">
-              &ldquo;Die besten Prompts für deine Kreativität und Produktivität.&rdquo;
-            </p>
-            <footer className="text-sm">Das PromptHaus Team</footer>
-          </blockquote>
-        </div>
-      </div>
-
-      {/* Rechte Spalte (Login Formular) */}
-      <div className="lg:p-8 flex items-center justify-center h-full">
-        <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
-          {/* Titel und Beschreibung */}
-          <div className="flex flex-col space-y-2 text-center">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Willkommen zurück
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Gib deine E-Mail und dein Passwort ein, um dich anzumelden.
-            </p>
-          </div>
-
+    // --- NEUES LAYOUT: Zentrierter Container ---
+    // Flexbox, zentriert Inhalt, minimale Höhe = Bildschirmhöhe, leichter Hintergrund
+    <div className="flex items-center justify-center min-h-screen bg-muted/40 px-4 py-12">
+      {/* Card als Rahmen, begrenzt die maximale Breite */}
+      <Card className="w-full max-w-sm shadow-lg">
+        <CardHeader className="space-y-1 text-center">
+          {/* Logo über dem Titel */}
+          <Link href="/" className="inline-block mb-4">
+            <Image
+              src="/prompthaus-logo.png" // Pfad zum Logo
+              alt="PromptHaus Logo"
+              width={150} // Breite anpassen
+              height={38} // Höhe anpassen
+              priority
+            />
+          </Link>
+          <CardTitle className="text-2xl">Willkommen zurück</CardTitle>
+          <CardDescription>
+            Melde dich bei deinem PromptHaus Konto an.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          {/* Fehlermeldung */}
+          {errorMsg && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Fehler</AlertTitle>
+              <AlertDescription>{errorMsg}</AlertDescription>
+            </Alert>
+          )}
           {/* Formular */}
-          <div className="grid gap-6">
-            <form onSubmit={handleLogin}>
-              <div className="grid gap-4"> {/* Gap für Elemente im Formular */}
-                 {/* Fehlermeldung (oben im Formular platziert) */}
-                {errorMsg && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Fehler</AlertTitle>
-                    <AlertDescription>{errorMsg}</AlertDescription>
-                  </Alert>
-                )}
-                {/* E-Mail Feld */}
-                <div className="grid gap-1">
-                  <Label className="sr-only" htmlFor="email"> {/* sr-only versteckt Label visuell */}
-                    Email
-                  </Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    placeholder="name@beispiel.com"
-                    type="email"
-                    autoCapitalize="none"
-                    autoComplete="email"
-                    autoCorrect="off"
-                    disabled={isPending}
-                    required
-                  />
-                </div>
-                {/* Passwort Feld */}
-                <div className="grid gap-1">
-                  <Label className="sr-only" htmlFor="password">
-                    Passwort
-                  </Label>
-                  <Input
-                    id="password"
-                    name="password"
-                    type="password"
-                    placeholder="Dein Passwort"
-                    disabled={isPending}
-                    required
-                  />
-                </div>
-                {/* Login Button */}
-                <Button type="submit" disabled={isPending} className="w-full">
-                  {isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Logge ein...
-                    </>
-                  ) : (
-                    'Login'
-                  )}
-                </Button>
-              </div>
-            </form>
-
-            {/* Trenner (Optional, falls OAuth-Buttons folgen) */}
-            {/* ... */}
-
-            {/* OAuth Buttons (Optional) */}
-            {/* ... */}
-          </div>
-
+          <form onSubmit={handleLogin} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email">E-Mail</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="name@beispiel.com"
+                required
+                disabled={isPending}
+                autoCapitalize="none"
+                autoComplete="email"
+                autoCorrect="off"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="password">Passwort</Label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                placeholder="Dein Passwort"
+                required
+                disabled={isPending}
+              />
+            </div>
+            <Button type="submit" disabled={isPending} className="w-full">
+              {isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Logge ein...
+                </>
+              ) : (
+                'Login'
+              )}
+            </Button>
+          </form>
+          {/* Optional: Trenner und OAuth könnten hier auch platziert werden */}
+        </CardContent>
+        <CardFooter className="flex flex-col items-center space-y-2">
           {/* Link zur Registrierung */}
-          <p className="px-8 text-center text-sm text-muted-foreground">
+          <p className="text-center text-sm text-muted-foreground">
             Noch kein Konto?{" "}
             <Link
               href="/signup" // oder /registrieren
@@ -161,10 +117,14 @@ export default function LoginPage() {
             >
               Registrieren
             </Link>
-            .
           </p>
-        </div>
-      </div>
+          {/* Optional: Passwort vergessen Link */}
+          {/* <Link href="/passwort-vergessen" className="text-sm underline underline-offset-4 text-muted-foreground hover:text-primary">
+            Passwort vergessen?
+          </Link> */}
+        </CardFooter>
+      </Card>
     </div>
+    // --- ENDE NEUES LAYOUT ---
   );
 }

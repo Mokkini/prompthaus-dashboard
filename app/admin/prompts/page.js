@@ -1,26 +1,27 @@
 // app/admin/prompts/page.js
-'use client'; // WICHTIG: Macht dies zu einer Client Component
+'use client'; // WICHTIG: Bleibt Client Component
 
 import { useState, useEffect, useMemo } from 'react';
-import { redirect } from 'next/navigation'; // Immer noch nützlich für Redirects
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import React from 'react';
 
-// Importiere die neue Server Action
-import { getAdminPageData } from './actions';
+// Importiere die Server Actions
+import { getAdminPageData, logout /*, addPromptPackage, deletePromptPackage, updatePromptPackage */ } from '@/app/actions'; // Alles aus der Haupt-Action-Datei (Pfad ggf. anpassen)
+
 
 // Importiere UI Komponenten
 import AddPromptForm from '@/components/AddPromptForm';
 import DeletePromptButton from '@/components/DeletePromptButton';
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input"; // NEU: Für die Suche
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"; // NEU: Für den Filter
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -38,11 +39,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { AlertCircle, ExternalLink, Pencil, PlusCircle, Loader2 } from "lucide-react"; // NEU: Loader2 für Ladeanzeige
+// Icons: LogOut hinzugefügt
+import { AlertCircle, ExternalLink, Pencil, PlusCircle, Loader2, LogOut } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
 // Hilfsfunktion zum Gruppieren (bleibt gleich)
 function groupPromptsByCategory(prompts) {
+  // ... (Funktion bleibt unverändert) ...
   if (!prompts) return {};
   return prompts.reduce((acc, prompt) => {
     const category = prompt.category || 'Ohne Kategorie';
@@ -55,25 +58,26 @@ function groupPromptsByCategory(prompts) {
   }, {});
 }
 
+
 export default function AdminPromptsPage() {
-  // === State Variablen ===
+  // === State Variablen (bleiben gleich) ===
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [userEmail, setUserEmail] = useState('');
-  const [allPrompts, setAllPrompts] = useState([]); // Alle geladenen Prompts
-  const [searchTerm, setSearchTerm] = useState(''); // Aktueller Suchbegriff
-  const [selectedCategory, setSelectedCategory] = useState('all'); // Aktuell gewählte Kategorie ('all' für alle)
+  const [allPrompts, setAllPrompts] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
 
-  // === Daten laden beim ersten Rendern ===
+  // === Daten laden beim ersten Rendern (bleibt gleich) ===
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
       setError(null);
-      const result = await getAdminPageData();
+      // Prüfe, ob getAdminPageData aus dem richtigen Pfad importiert wird
+      const result = await getAdminPageData(); // './actions' oder '../actions'
 
       if (!result.success) {
         setError(result.error || 'Ein unbekannter Fehler ist aufgetreten.');
-        // Bei bestimmten Fehlern weiterleiten
         if (result.error === 'Nicht eingeloggt.') redirect('/login');
         if (result.error === 'Nicht autorisiert.') redirect('/');
       } else {
@@ -83,26 +87,21 @@ export default function AdminPromptsPage() {
       setIsLoading(false);
     }
     loadData();
-  }, []); // Leeres Array bedeutet: Nur einmal beim Mounten ausführen
+  }, []);
 
-  // === Abgeleitete Werte (gefiltert, gruppiert) ===
-
-  // 1. Liste aller verfügbaren Kategorien für den Filter-Dropdown
+  // === Abgeleitete Werte (bleiben gleich) ===
   const availableCategories = useMemo(() => {
+    // ... (bleibt unverändert) ...
     const categories = new Set(allPrompts.map(p => p.category || 'Ohne Kategorie'));
-    return ['all', ...Array.from(categories).sort()]; // 'all' als erste Option
+    return ['all', ...Array.from(categories).sort()];
   }, [allPrompts]);
 
-  // 2. Prompts filtern (nach Kategorie UND Suche) und dann gruppieren
   const filteredAndGroupedPrompts = useMemo(() => {
+    // ... (bleibt unverändert) ...
     let filtered = allPrompts;
-
-    // Nach Kategorie filtern (wenn nicht 'all' ausgewählt ist)
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(p => (p.category || 'Ohne Kategorie') === selectedCategory);
     }
-
-    // Nach Suchbegriff filtern
     if (searchTerm) {
       const lowerSearchTerm = searchTerm.toLowerCase();
       filtered = filtered.filter(p =>
@@ -110,20 +109,19 @@ export default function AdminPromptsPage() {
         p.slug.toLowerCase().includes(lowerSearchTerm)
       );
     }
-
     return groupPromptsByCategory(filtered);
   }, [allPrompts, selectedCategory, searchTerm]);
 
-  // 3. Kategorien, die nach dem Filtern noch angezeigt werden sollen
   const displayCategories = useMemo(() => {
+    // ... (bleibt unverändert) ...
     return Object.keys(filteredAndGroupedPrompts).sort();
   }, [filteredAndGroupedPrompts]);
 
-  // === Rendern ===
 
-  // Ladezustand anzeigen
+  // === Rendern (bleibt gleich bis zum Kopfbereich) ===
   if (isLoading) {
-    return (
+    // ... (Ladeanzeige bleibt unverändert) ...
+     return (
       <div className="container mx-auto py-8 px-4 flex justify-center items-center min-h-[300px]">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         <span className="ml-2">Lade Daten...</span>
@@ -131,9 +129,9 @@ export default function AdminPromptsPage() {
     );
   }
 
-  // Fehler anzeigen
   if (error) {
-    return (
+    // ... (Fehleranzeige bleibt unverändert) ...
+     return (
       <div className="container mx-auto py-8 px-4 md:px-6 lg:px-8">
         <h1 className="text-3xl font-semibold mb-6">Admin: Prompt Verwaltung</h1>
         <Alert variant="destructive">
@@ -145,7 +143,6 @@ export default function AdminPromptsPage() {
     );
   }
 
-  // Hauptinhalt rendern
   return (
     <div className="container mx-auto py-8 px-4 md:px-6 lg:px-8 space-y-8">
       {/* Kopfbereich */}
@@ -154,11 +151,12 @@ export default function AdminPromptsPage() {
           <h1 className="text-3xl font-semibold">Admin: Prompt Verwaltung</h1>
           {userEmail && <p className="text-muted-foreground">Willkommen, {userEmail}.</p>}
         </div>
+        {/* --- Button-Gruppe --- */}
         <div className="flex flex-wrap gap-2">
           <Link href="/" passHref>
             <Button variant="outline">Zur Hauptseite</Button>
           </Link>
-          {/* Dialog für neues Paket (unverändert) */}
+          {/* Dialog für neues Paket */}
           <Dialog>
             <DialogTrigger asChild>
               <Button>
@@ -166,7 +164,8 @@ export default function AdminPromptsPage() {
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
+              {/* ... Dialog Inhalt ... */}
+               <DialogHeader>
                 <DialogTitle>Neues Prompt-Paket hinzufügen</DialogTitle>
                 <DialogDescription>
                   Fülle die Felder aus, um ein neues Paket inklusive Varianten zu erstellen.
@@ -178,17 +177,27 @@ export default function AdminPromptsPage() {
               </div>
             </DialogContent>
           </Dialog>
+
+          {/* --- NEUER LOGOUT BUTTON --- */}
+          <form action={logout}>
+            <Button variant="outline" type="submit">
+              <LogOut className="mr-2 h-4 w-4" /> Logout
+            </Button>
+          </form>
+          {/* --- ENDE LOGOUT BUTTON --- */}
+
         </div>
       </div>
 
-      {/* NEU: Filter- und Suchleiste */}
+      {/* Filter- und Suchleiste (bleibt gleich) */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
-        <Input
+        {/* ... Input und Select ... */}
+         <Input
           type="search"
           placeholder="Suche nach Name oder Slug..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-xs" // Begrenzt Breite
+          className="max-w-xs"
         />
         <Select value={selectedCategory} onValueChange={setSelectedCategory}>
           <SelectTrigger className="w-full sm:w-[200px]">
@@ -204,9 +213,10 @@ export default function AdminPromptsPage() {
         </Select>
       </div>
 
-      {/* Gruppierte & Gefilterte Prompt-Pakete */}
+      {/* Gruppierte & Gefilterte Prompt-Pakete (bleibt gleich) */}
       <div className="space-y-6">
-        {displayCategories.length > 0 ? (
+        {/* ... Anzeige der Tabelle ... */}
+         {displayCategories.length > 0 ? (
           displayCategories.map((category, index) => (
             <div key={category}>
               {index > 0 && <Separator className="my-6" />}
@@ -228,7 +238,7 @@ export default function AdminPromptsPage() {
                           {prompt.slug}
                         </TableCell>
                         <TableCell className="text-right space-x-1 md:space-x-2">
-                          {/* Action Buttons (unverändert) */}
+                          {/* Action Buttons */}
                           <Button variant="outline" size="icon" asChild title="Preview">
                             <Link href={`/prompt/${prompt.slug}`} target="_blank" rel="noopener noreferrer">
                               <ExternalLink className="h-4 w-4" /> <span className="sr-only">Preview</span>
@@ -242,8 +252,6 @@ export default function AdminPromptsPage() {
                           <DeletePromptButton
                             packageId={prompt.id}
                             packageName={prompt.name}
-                            // Optional: Callback hinzufügen, um Liste clientseitig zu aktualisieren nach Löschen
-                            // onDeleted={() => setAllPrompts(prev => prev.filter(p => p.id !== prompt.id))}
                           />
                         </TableCell>
                       </TableRow>
@@ -254,7 +262,7 @@ export default function AdminPromptsPage() {
             </div>
           ))
         ) : (
-          // Nachricht, wenn keine Prompts gefunden wurden (nach Filter/Suche)
+          // Nachricht, wenn keine Prompts gefunden wurden
           <div className="text-center py-10 border border-dashed rounded-md">
             <p className="text-muted-foreground">
               {allPrompts.length === 0 ? 'Noch keine Prompt-Pakete in der Datenbank gefunden.' : 'Keine Prompts entsprechen den aktuellen Filtern.'}

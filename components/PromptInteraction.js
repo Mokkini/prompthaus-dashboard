@@ -1,15 +1,13 @@
-// components/PromptInteraction.js - Mit Rephrase/Refine, Share Buttons und Freitext-Tonalität
+// components/PromptInteraction.js - Mit Rephrase/Refine, Share Buttons und Freitext-Tonalität + Autocomplete
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react'; // useRef hinzugefügt
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
-// Select wird nicht mehr benötigt für Tonalität
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 // Icons importieren
 import { Loader2, AlertCircle, Copy, Check, Share2, MessageSquare, Linkedin, Facebook, RefreshCw, Info } from "lucide-react";
@@ -20,22 +18,37 @@ const formatPlaceholderName = (name) => {
   return name.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
 };
 
+// --- NEU: Liste der Tonalitätsvorschläge ---
+const toneSuggestions = [
+  'freundlich', 'sachlich', 'bestimmt', 'höflich', 'emotional',
+  'motivierend', 'humorvoll', 'verbindlich', 'kreativ', 'klar & direkt',
+  'inspirierend', 'ironisch', 'offiziell/formell', 'einfühlsam',
+  'verkaufend', 'locker', 'professionell', 'förmlich'
+];
+// --- ENDE NEU ---
+
 export default function PromptInteraction({ variants, slug }) {
   // Bestehende State Hooks
   const [selectedVariantIndex, setSelectedVariantIndex] = useState(0);
   const [currentPlaceholderInfo, setCurrentPlaceholderInfo] = useState([]);
   const [placeholderValues, setPlaceholderValues] = useState({});
-  const [selectedTone, setSelectedTone] = useState(''); // Bleibt als State für das Input-Feld
+  const [selectedTone, setSelectedTone] = useState('');
   const [generatedText, setGeneratedText] = useState('');
-  const [loading, setLoading] = useState(false); // Für initiale Generierung
+  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isCopied, setIsCopied] = useState(false);
   const [canShare, setCanShare] = useState(false);
 
-  // *** NEUE State Hooks für Rephrase/Refine ***
+  // State Hooks für Rephrase/Refine
   const [showRefineInput, setShowRefineInput] = useState(false);
   const [additionalInfo, setAdditionalInfo] = useState('');
-  const [isRefining, setIsRefining] = useState(false); // Für Rephrase/Refine Aktionen
+  const [isRefining, setIsRefining] = useState(false);
+
+  // --- NEU: State Hooks für Tonalitätsvorschläge ---
+  const [filteredTones, setFilteredTones] = useState([]);
+  const [showToneSuggestions, setShowToneSuggestions] = useState(false);
+  const toneInputRef = useRef(null); // Ref für das Input-Feld und die Vorschlagsliste
+  // --- ENDE NEU ---
 
   // Aktuell ausgewählte Variante
   const currentVariant = variants?.[selectedVariantIndex];
@@ -48,7 +61,7 @@ export default function PromptInteraction({ variants, slug }) {
         setCurrentPlaceholderInfo(currentVariant.placeholders_meta);
       } else {
         const template = currentVariant.template || '';
-        const regex = /{{(.*?)}}/g; // Non-greedy
+        const regex = /{{(.*?)}}/g;
         const matches = new Set();
         let match;
         while ((match = regex.exec(template)) !== null) {
@@ -59,13 +72,17 @@ export default function PromptInteraction({ variants, slug }) {
       // Reset States
       setPlaceholderValues({});
       setGeneratedText('');
-      setSelectedTone(''); // Tonalität zurücksetzen
+      setSelectedTone('');
       setErrorMsg('');
       setIsCopied(false);
-      setShowRefineInput(false); // Refine-Input zurücksetzen
-      setAdditionalInfo('');    // Refine-Input zurücksetzen
+      setShowRefineInput(false);
+      setAdditionalInfo('');
+      // --- NEU: Vorschläge zurücksetzen ---
+      setFilteredTones([]);
+      setShowToneSuggestions(false);
+      // --- ENDE NEU ---
     } else {
-      // Fallback, wenn keine Variante vorhanden
+      // Fallback
       setCurrentPlaceholderInfo([]);
       setPlaceholderValues({});
       setGeneratedText('');
@@ -74,6 +91,10 @@ export default function PromptInteraction({ variants, slug }) {
       setIsCopied(false);
       setShowRefineInput(false);
       setAdditionalInfo('');
+      // --- NEU: Vorschläge zurücksetzen ---
+      setFilteredTones([]);
+      setShowToneSuggestions(false);
+      // --- ENDE NEU ---
     }
   }, [selectedVariantIndex, variants, currentVariant]);
 
@@ -84,11 +105,57 @@ export default function PromptInteraction({ variants, slug }) {
     }
   }, []);
 
+  // --- NEU: useEffect zum Schließen der Vorschläge bei Klick außerhalb ---
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // Schließe, wenn außerhalb des Bereichs geklickt wird, der durch toneInputRef definiert ist
+      if (toneInputRef.current && !toneInputRef.current.contains(event.target)) {
+        setShowToneSuggestions(false);
+      }
+    };
+    // Event Listener hinzufügen
+    document.addEventListener('mousedown', handleClickOutside);
+    // Cleanup: Event Listener entfernen
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []); // Leeres Array, damit der Effekt nur beim Mounten/Unmounten läuft
+  // --- ENDE NEU ---
+
 
   // Event Handlers
   const handleInputChange = (name, value) => {
     setPlaceholderValues(prev => ({ ...prev, [name]: value }));
   };
+
+  // --- NEU: Handler für Tonalitäts-Input-Änderungen ---
+  const handleToneInputChange = (e) => {
+    const value = e.target.value;
+    setSelectedTone(value);
+
+    if (value.trim().length > 0) {
+      // Filtere Vorschläge, die mit der Eingabe beginnen (case-insensitive)
+      const filtered = toneSuggestions.filter(tone =>
+        tone.toLowerCase().startsWith(value.toLowerCase())
+      );
+      setFilteredTones(filtered);
+      // Zeige Vorschläge nur an, wenn welche gefunden wurden
+      setShowToneSuggestions(filtered.length > 0);
+    } else {
+      // Keine Eingabe -> keine Vorschläge
+      setFilteredTones([]);
+      setShowToneSuggestions(false);
+    }
+  };
+  // --- ENDE NEU ---
+
+  // --- NEU: Handler für die Auswahl eines Tonalitäts-Vorschlags ---
+  const handleToneSuggestionClick = (tone) => {
+    setSelectedTone(tone); // Setze den ausgewählten Ton in den Input
+    setFilteredTones([]);   // Leere die gefilterten Vorschläge
+    setShowToneSuggestions(false); // Verstecke die Vorschlagsliste
+  };
+  // --- ENDE NEU ---
 
   const handleCopy = () => {
     if (!generatedText) return;
@@ -144,48 +211,43 @@ export default function PromptInteraction({ variants, slug }) {
     }
   };
 
-  // Handler für initiale Generierung (Prüfung auf selectedTone entfernt/angepasst)
+  // Handler für initiale Generierung (unverändert bezüglich Tonalität)
   const handleInitialGenerate = () => {
     const expected = currentPlaceholderInfo.map(p => typeof p === 'string' ? p : p.name);
     const missing = expected.filter(name => !placeholderValues[name]?.trim());
     if (missing.length > 0) {
-      // Formatierte Namen für bessere Lesbarkeit
       setErrorMsg(`Bitte fülle alle Platzhalter aus: ${missing.map(formatPlaceholderName).join(', ')}`);
       return;
     }
-    // Entfernt: Prüfung, ob ein Ton aus der Liste ausgewählt wurde.
-    // Optional: Könnte prüfen, ob das Feld leer ist, falls gewünscht.
 
     const payload = {
       action: 'generate',
       promptPackageSlug: slug,
       variantIndex: selectedVariantIndex,
       placeholders: placeholderValues,
-      // Füge den Ton nur hinzu, wenn er nicht leer ist
       ...(selectedTone.trim() && { tone: selectedTone.trim() })
     };
     callGenerateApi(payload, setLoading);
   };
 
-  // Handler für "Neu formulieren" (Payload-Logik angepasst)
+  // Handler für "Neu formulieren" (unverändert bezüglich Tonalität)
   const handleRephrase = () => {
     const payload = {
       action: 'rephrase',
       promptPackageSlug: slug,
       variantIndex: selectedVariantIndex,
       placeholders: placeholderValues,
-      // Füge den Ton nur hinzu, wenn er nicht leer ist
       ...(selectedTone.trim() && { tone: selectedTone.trim() })
     };
     callGenerateApi(payload, setIsRefining);
   };
 
-  // Handler für "Zusatzinfos angeben" (öffnet/schließt Feld)
+  // Handler für "Zusatzinfos angeben" (unverändert)
   const handleToggleRefineInput = () => {
     setShowRefineInput(!showRefineInput);
   };
 
-  // Handler für "Verfeinern" (Payload-Logik angepasst)
+  // Handler für "Verfeinern" (unverändert bezüglich Tonalität)
   const handleRefine = () => {
     if (!additionalInfo.trim()) {
       setErrorMsg("Bitte gib Zusatzinformationen für die Verfeinerung ein.");
@@ -196,10 +258,9 @@ export default function PromptInteraction({ variants, slug }) {
       action: 'refine',
       originalText: generatedText,
       additionalInfo: additionalInfo,
-      promptPackageSlug: slug, // Kontext mitsenden
+      promptPackageSlug: slug,
       variantIndex: selectedVariantIndex,
       placeholders: placeholderValues,
-      // Füge den Ton nur hinzu, wenn er nicht leer ist
       ...(selectedTone.trim() && { tone: selectedTone.trim() })
     };
     callGenerateApi(payload, setIsRefining);
@@ -210,7 +271,7 @@ export default function PromptInteraction({ variants, slug }) {
   return (
     <div className="w-full space-y-8"> {/* Hauptcontainer */}
 
-      {/* Variantenauswahl */}
+      {/* Variantenauswahl (unverändert) */}
       {variants.length > 1 && (
         <div>
           <h2 className="text-lg font-semibold mb-4 text-center md:text-left">Variante auswählen:</h2>
@@ -239,7 +300,7 @@ export default function PromptInteraction({ variants, slug }) {
         </div>
       )}
 
-      {/* Haupt-Grid für Eingabe/Ausgabe */}
+      {/* Haupt-Grid für Eingabe/Ausgabe (unverändert) */}
       {currentVariant ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
           {/* Linke Spalte: Eingabe */}
@@ -252,22 +313,44 @@ export default function PromptInteraction({ variants, slug }) {
             </CardHeader>
             <CardContent className="space-y-6">
 
-              {/* --- ANPASSUNG: Tonalität als Freitextfeld --- */}
-              <div className="space-y-1.5">
+              {/* --- ANPASSUNG: Tonalität als Freitextfeld MIT VORSCHLÄGEN --- */}
+              <div className="space-y-1.5 relative" ref={toneInputRef}> {/* Position relative + Ref */}
                 <Label htmlFor={`tone-${selectedVariantIndex}`}>Gewünschte Tonalität (optional):</Label>
                 <Input
                   id={`tone-${selectedVariantIndex}`}
                   value={selectedTone}
-                  onChange={(e) => setSelectedTone(e.target.value)} // Direkte State-Aktualisierung
-                  placeholder="z.B. sachlich, förmlich, emotional, humorvoll,..."
+                  onChange={handleToneInputChange} // Geänderten Handler verwenden
+                  onFocus={() => { // Zeige Vorschläge auch bei Fokus, wenn Input nicht leer ist und Filter existieren
+                    if (selectedTone.trim().length > 0 && filteredTones.length > 0) {
+                       setShowToneSuggestions(true);
+                    }
+                  }}
+                  placeholder="z.B. sachlich, förmlich, kreativ,..."
+                  autoComplete="off" // Browser-Autocomplete deaktivieren
                 />
+                {/* --- NEU: Vorschlagsliste --- */}
+                {showToneSuggestions && filteredTones.length > 0 && (
+                  <ul className="absolute z-10 w-full bg-background border border-border rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto"> {/* max-h erhöht */}
+                    {filteredTones.map((tone, index) => (
+                      <li
+                        key={index}
+                        className="px-3 py-2 text-sm hover:bg-accent cursor-pointer"
+                        // onMouseDown statt onClick, um Blur-Event des Inputs zuvorzukommen
+                        onMouseDown={(e) => { e.preventDefault(); handleToneSuggestionClick(tone); }}
+                      >
+                        {tone}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {/* --- ENDE NEU --- */}
                 <p className="text-xs text-muted-foreground">
-                  Beschreibe den gewünschten Tonfall oder lasse das Feld leer für den Standardton.
+                  Tippe, um Vorschläge zu sehen, oder beschreibe den gewünschten Tonfall.
                 </p>
               </div>
               {/* --- ENDE ANPASSUNG --- */}
 
-              {/* Platzhalter */}
+              {/* Platzhalter (unverändert) */}
               <div>
                 <h3 className="text-base font-semibold mb-3">Platzhalter ausfüllen:</h3>
                 {currentPlaceholderInfo.length > 0 ? (
@@ -300,7 +383,7 @@ export default function PromptInteraction({ variants, slug }) {
             </CardFooter>
           </Card>
 
-          {/* Rechte Spalte: Ausgabe */}
+          {/* Rechte Spalte: Ausgabe (unverändert) */}
           <Card className="flex flex-col">
             <CardHeader>
               <div className="flex justify-between items-center">
@@ -348,7 +431,7 @@ export default function PromptInteraction({ variants, slug }) {
                )}
             </CardContent>
 
-            {/* Footer für Aktionen */}
+            {/* Footer für Aktionen (unverändert) */}
             {generatedText && !loading && (
               <CardFooter className="flex flex-col items-start gap-4 pt-4 border-t">
 

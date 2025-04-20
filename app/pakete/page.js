@@ -1,44 +1,104 @@
-// app/pakete/page.js - Mit Zurück-Button für die "Alle Pakete"-Ansicht
+// app/pakete/page.js
 
 // ======= Imports =======
 import { createClient } from '@/lib/supabase/server';
 import Navigation from '@/components/Navigation';
-import { ProductCard } from '@/components/store/ProductCard'; // Pfad prüfen!
+// Korrekter Named Import für ProductCard
+import { ProductCard } from '@/components/store/ProductCard';
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
-import { XCircle, LayoutGrid, ArrowLeft } from 'lucide-react'; // ArrowLeft hinzugefügt
-import RevealOnScroll from '@/components/ui/RevealOnScroll'; // Für den Effekt
-// Ggf. Footer importieren
-// import Footer from '@/components/Footer';
+// Icons: ListFilter für Kategorie-Dropdown hinzugefügt, andere ggf. nicht mehr nötig
+import { XCircle, LayoutGrid, ArrowLeft, ArrowDownUp, Check, ListFilter } from 'lucide-react';
+import RevealOnScroll from '@/components/ui/RevealOnScroll';
+// Shadcn UI Komponenten für Dropdown
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-// ======= Hauptfunktion der Paketseite (nimmt searchParams entgegen) =======
+
+// ======= Hilfsfunktion createFilterUrl (bleibt unverändert) =======
+const createFilterUrl = (currentSearchParams, newParam) => {
+  const params = new URLSearchParams();
+  if (currentSearchParams) {
+    Object.entries(currentSearchParams).forEach(([key, value]) => {
+      if (typeof value === 'string') {
+        params.set(key, value);
+      } else if (Array.isArray(value)) {
+        value.forEach(item => {
+          if (typeof item === 'string') {
+            params.append(key, item);
+          }
+        });
+      }
+    });
+  }
+  Object.entries(newParam).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === '') {
+      params.delete(key);
+    } else {
+      params.set(key, String(value));
+    }
+  });
+  const queryString = params.toString();
+  return queryString ? `/pakete?${queryString}` : '/pakete';
+};
+
+
+// ======= Hauptfunktion der Paketseite =======
 export default async function PaketePage({ searchParams }) {
-  // Nutzerstatus für Navigation holen
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Alle Pakete laden
+  // --- Filter- und Sortierparameter auslesen ---
+  const selectedCategory = searchParams?.kategorie;
+  const currentSort = searchParams?.sort || 'name_asc'; // Standard-Sortierung
+
+  // --- Sortieroptionen definieren (bleibt unverändert) ---
+  const sortOptions = [
+    { value: 'name_asc', label: 'Name (A-Z)', column: 'name', ascending: true },
+    { value: 'name_desc', label: 'Name (Z-A)', column: 'name', ascending: false },
+    { value: 'price_asc', label: 'Preis (aufsteigend)', column: 'price', ascending: true },
+    { value: 'price_desc', label: 'Preis (absteigend)', column: 'price', ascending: false },
+  ];
+  const selectedSortOption = sortOptions.find(opt => opt.value === currentSort) || sortOptions[0];
+
+  // --- Kategorien abrufen (wichtig für das Dropdown) ---
+  const { data: categoriesData, error: categoriesError } = await supabase
+    .from('prompt_packages')
+    .select('category')
+    .neq('category', null) // Ignoriere Pakete ohne Kategorie
+    .order('category', { ascending: true });
+
+  if (categoriesError) {
+    console.error('Fehler beim Laden der Kategorien:', categoriesError.message);
+  }
+  // Eindeutige Liste von Kategorienamen erstellen
+  const availableCategories = categoriesData
+    ? [...new Set(categoriesData.map(item => item.category).filter(Boolean))]
+    : [];
+
+  // --- Angepasste Supabase-Abfrage mit Sortierung (bleibt unverändert) ---
   const { data: allPromptPackages, error: packagesError } = await supabase
     .from('prompt_packages')
-    .select('*') // Alle Daten für ProductCard holen
-    .order('name', { ascending: true });
+    .select('*')
+    .order(selectedSortOption.column, { ascending: selectedSortOption.ascending });
 
   if (packagesError) {
     console.error('Fehler beim Laden der Textpakete für Paketseite:', packagesError.message);
-    // Hier könnte man eine bessere Fehlerseite rendern
   }
 
-  // Kategorie aus searchParams lesen
-  const selectedCategory = searchParams?.kategorie;
-
-  // Pakete filtern, falls eine Kategorie ausgewählt ist
+  // --- Filterung nach Kategorie (bleibt unverändert) ---
   const filteredPromptPackages = selectedCategory
     ? (allPromptPackages || []).filter(pkg =>
         (pkg.category || 'Ohne Kategorie') === selectedCategory
       )
-    : (allPromptPackages || []); // Wenn keine Kategorie ausgewählt, zeige alle
+    : (allPromptPackages || []);
 
-  // Dynamischer Titel basierend auf der Auswahl
   const pageTitle = selectedCategory
     ? `Pakete für: ${selectedCategory}`
     : 'Unsere Themenpakete';
@@ -46,52 +106,79 @@ export default async function PaketePage({ searchParams }) {
   // Seitenstruktur (JSX)
   return (
     <>
-      {/* ======= Navigation ======= */}
       <Navigation user={user} />
-
-      {/* ======= Hauptinhalt der Paketseite ======= */}
       <main className="flex-grow py-12 md:py-16 lg:py-20">
         <div className="container mx-auto px-4 md:px-6">
-
-          {/* --- Breadcrumbs wurden entfernt --- */}
-
           <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-center mb-10 md:mb-16">
-            {pageTitle} {/* Dynamischer Titel */}
+            {pageTitle}
           </h1>
 
-          {/* --- ANGEPASST: Bedingte Buttons --- */}
-          <div className="text-center mb-8 flex flex-wrap justify-center items-center gap-4">
-            {selectedCategory ? (
-              // Buttons, wenn eine Kategorie ausgewählt ist
-              <>
-                <Button variant="outline" size="sm" asChild>
-                  <Link href="/pakete" scroll={false}>
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Alle Pakete anzeigen
-                  </Link>
+          {/* --- Filter- und Navigationsleiste --- */}
+          <div className="mb-8 flex flex-wrap justify-center items-center gap-4">
+
+            {/* --- NEU: Kategorie-Filter-Dropdown --- */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <ListFilter className="mr-2 h-4 w-4" />
+                  {selectedCategory ? `Kategorie: ${selectedCategory}` : 'Kategorie wählen'}
                 </Button>
-                <Button variant="outline" size="sm" asChild>
-                  <Link href="/kategorien" scroll={false}>
-                    <LayoutGrid className="mr-2 h-4 w-4" />
-                    Zurück zu allen Kategorien
-                  </Link>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start"> {/* Ausrichtung ggf. anpassen */}
+                <DropdownMenuLabel>Kategorie filtern</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {/* Option "Alle Kategorien" */}
+                <DropdownMenuItem asChild className={!selectedCategory ? 'bg-accent' : ''}>
+                   <Link href={createFilterUrl(searchParams, { kategorie: null })} scroll={false} className="flex justify-between w-full">
+                      Alle Kategorien
+                      {!selectedCategory && <Check className="h-4 w-4 ml-2" />}
+                   </Link>
+                </DropdownMenuItem>
+                {/* Verfügbare Kategorien auflisten */}
+                {availableCategories.map((category) => (
+                  <DropdownMenuItem key={category} asChild className={selectedCategory === category ? 'bg-accent' : ''}>
+                    <Link href={createFilterUrl(searchParams, { kategorie: category })} scroll={false} className="flex justify-between w-full">
+                      {category}
+                      {selectedCategory === category && <Check className="h-4 w-4 ml-2" />}
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {/* --- ENDE Kategorie-Filter-Dropdown --- */}
+
+
+            {/* --- Sortier-Dropdown (bleibt unverändert) --- */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <ArrowDownUp className="mr-2 h-4 w-4" />
+                  Sortieren nach: {selectedSortOption.label}
                 </Button>
-              </>
-            ) : (
-              // Button, wenn KEINE Kategorie ausgewählt ist (Alle Pakete Ansicht)
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/kategorien" scroll={false}>
-                  <ArrowLeft className="mr-2 h-4 w-4" /> {/* Oder LayoutGrid */}
-                  Zurück zu den Kategorien
-                </Link>
-              </Button>
-            )}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end"> {/* Ausrichtung ggf. anpassen */}
+                <DropdownMenuLabel>Sortieren nach</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {sortOptions.map((option) => (
+                  <DropdownMenuItem key={option.value} asChild className={currentSort === option.value ? 'bg-accent' : ''}>
+                    <Link href={createFilterUrl(searchParams, { sort: option.value })} scroll={false} className="flex justify-between w-full">
+                      {option.label}
+                      {currentSort === option.value && <Check className="h-4 w-4 ml-2" />}
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {/* --- ENDE Sortier-Dropdown --- */}
+
+            {/* --- ENTFERNT: Alte Kategorie-Buttons --- */}
+            {/* Die Buttons "Alle Pakete anzeigen", "Zurück zu allen Kategorien" etc. wurden entfernt,
+                da die Funktionalität jetzt im Kategorie-Dropdown enthalten ist. */}
+
           </div>
-          {/* --- ENDE ANGEPASST --- */}
 
-
-          {/* Fehlerbehandlung und Anzeige der gefilterten Pakete */}
-          {packagesError ? (
+          {/* Fehlerbehandlung und Anzeige der Pakete (bleibt unverändert) */}
+          {packagesError || categoriesError ? ( // Fehlerprüfung für Kategorien hinzugefügt
             <p className="text-center text-red-500">
               Ups! Es gab ein Problem beim Laden der Inhalte. Bitte versuche es später erneut.
             </p>
@@ -102,12 +189,10 @@ export default async function PaketePage({ searchParams }) {
                 : 'Momentan sind keine Textpakete verfügbar. Schau bald wieder vorbei!'}
             </p>
           ) : (
-            // RevealOnScroll um das Grid legen für einen Gesamt-Effekt
             <RevealOnScroll>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {filteredPromptPackages.map((prompt) => (
-                  // Stelle sicher, dass ProductCard importiert ist und die Props erwartet
-                  <ProductCard key={prompt.id} prompt={prompt} />
+                {filteredPromptPackages.map((promptPackage) => (
+                  <ProductCard key={promptPackage.id} prompt={promptPackage} />
                 ))}
               </div>
             </RevealOnScroll>
@@ -115,10 +200,9 @@ export default async function PaketePage({ searchParams }) {
         </div>
       </main>
 
-      {/* ======= Footer ======= */}
-      {/* <Footer /> */}
+      {/* Footer (bleibt unverändert) */}
       <footer className="border-t py-8 bg-muted/40 mt-16">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>© {new Date().getFullYear()} PromptHaus. Alle Rechte vorbehalten.</p>
           <div className="mt-2">
             <Link href="/impressum" className="hover:text-primary mx-2">Impressum</Link>
