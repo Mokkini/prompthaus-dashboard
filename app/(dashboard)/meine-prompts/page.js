@@ -1,4 +1,4 @@
-// app/(dashboard)/meine-prompts/page.js - Angepasst für Testuser & Accordion
+// app/(dashboard)/meine-prompts/page.js - Angepasst für Testuser & Grid-Layout
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
@@ -11,45 +11,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, Loader2, AlertCircle, ChevronRight } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import { cn } from "@/lib/utils"; // Import cn für bedingte Klassen
+import { Card, CardHeader, CardTitle, CardDescription, CardFooter, CardContent } from "@/components/ui/card"; // Card-Komponenten importieren
+import { Badge } from "@/components/ui/badge"; // Badge für Kategorie importieren
 
 // --- NEU: Definiere die E-Mail deines Testusers ---
 const TEST_USER_EMAIL = 'danadi@gmx.de'; // <-- Deine Test-E-Mail
 // --- Ende NEU ---
 
-// Hilfsfunktion zum Gruppieren (bleibt gleich)
-function groupPromptsByCategory(prompts) {
-  if (!prompts) return {};
-  return prompts.reduce((acc, prompt) => {
-    const category = prompt.category || 'Ohne Kategorie';
-    if (!acc[category]) {
-      acc[category] = [];
-    }
-    acc[category].push(prompt);
-    // Innerhalb der Kategorie nach Namen sortieren
-    acc[category].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    return acc;
-  }, {});
-}
-
+// Hilfsfunktion zum Gruppieren wird nicht mehr benötigt für Grid
 
 export default function MeinePromptsPage() {
   // State Hooks (bleiben gleich)
-  const [allPrompts, setAllPrompts] = useState([]); // Wird jetzt entweder alle oder gekaufte enthalten
+  const [allPrompts, setAllPrompts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [currentUserEmail, setCurrentUserEmail] = useState(null); // State für User-Email
 
   // Datenabfrage (ANGEPASST für Testuser)
   useEffect(() => {
-    const fetchPrompts = async () => { // Funktion umbenannt für Klarheit
+    const fetchPrompts = async () => {
       setIsLoading(true);
       setError(null);
       const supabase = createClient();
@@ -63,78 +45,69 @@ export default function MeinePromptsPage() {
         return;
       }
       console.log("Eingeloggter User:", user.id, user.email);
+      setCurrentUserEmail(user.email); // User-Email im State speichern
 
-      // --- NEUE LOGIK: Prüfen, ob es der Testuser ist ---
       const isTestUser = user.email === TEST_USER_EMAIL;
 
       try {
-        let promptsData = []; // Variable für die zu setzenden Daten
+        let promptsData = [];
 
         if (isTestUser) {
-          // Lade ALLE Pakete für den Testuser
           console.log(`Testuser (${user.email}) erkannt. Lade ALLE Pakete.`);
           const { data, error: packagesError } = await supabase
             .from('prompt_packages')
             .select('id, name, description, slug, category') // Benötigte Felder
-            .order('name', { ascending: true });
+            .order('category') // Sortiere nach Kategorie, dann Name
+            .order('name');
 
-          if (packagesError) {
-            console.error('Fehler beim Laden ALLER Pakete für Testuser:', packagesError);
-            throw packagesError;
-          }
+          if (packagesError) throw packagesError;
           promptsData = data || [];
           console.log(`Anzahl aller Pakete für Testuser: ${promptsData.length}`);
 
         } else {
-          // Lade nur die gekauften Pakete für normale User
           console.log(`Normaler User (${user.email}). Lade gekaufte Pakete.`);
-          console.log("Frage user_purchases ab für user_id:", user.id);
           const { data: purchases, error: purchasesError } = await supabase
             .from('user_purchases')
             .select('prompt_package_id')
             .eq('user_id', user.id);
 
-          if (purchasesError) {
-            console.error("Fehler beim Abrufen der Käufe:", purchasesError);
-            throw purchasesError;
-          }
+          if (purchasesError) throw purchasesError;
 
           const purchasedPackageIds = purchases.map(p => p.prompt_package_id);
           console.log("Gekaufte Paket-IDs:", purchasedPackageIds);
 
           if (purchasedPackageIds.length === 0) {
             console.log("Keine Käufe für diesen User gefunden.");
-            promptsData = []; // Leeres Array, wenn nichts gekauft
+            promptsData = [];
           } else {
             console.log("Frage prompt_packages ab für IDs:", purchasedPackageIds);
             const { data: packagesData, error: packagesError } = await supabase
               .from('prompt_packages')
               .select('id, name, description, slug, category')
-              .in('id', purchasedPackageIds);
+              .in('id', purchasedPackageIds)
+              .order('category') // Sortiere nach Kategorie, dann Name
+              .order('name');
 
-            if (packagesError) {
-              console.error("Fehler beim Abrufen der Paket-Details:", packagesError);
-              throw packagesError;
-            }
+            if (packagesError) throw packagesError;
             promptsData = packagesData || [];
             console.log(`Anzahl gekaufter Pakete für normalen User: ${promptsData.length}`);
           }
         }
-        setAllPrompts(promptsData); // Setze die geladenen Daten (entweder alle oder gekaufte)
+        setAllPrompts(promptsData);
 
       } catch (fetchError) {
          console.error("Gesamtfehler beim Laden der Prompts:", fetchError);
          setError(`Fehler beim Laden Ihrer Prompts: ${fetchError.message}`);
-         setAllPrompts([]); // Sicherstellen, dass bei Fehler keine alten Daten angezeigt werden
+         setAllPrompts([]);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchPrompts();
-  }, []); // Dependency array bleibt leer, um nur beim Mounten zu laden
+  }, []);
 
-  // Filter- und Gruppierungslogik (bleibt gleich)
+  // Filterlogik (bleibt gleich)
   const availableCategories = useMemo(() => {
     const categories = new Set(allPrompts.map(p => p.category || 'Ohne Kategorie'));
     return ['all', ...Array.from(categories).sort()];
@@ -152,13 +125,12 @@ export default function MeinePromptsPage() {
         p.description?.toLowerCase().includes(lowerSearchTerm)
       );
     }
+    // Optional: Hier könnte man noch nach Name sortieren, wenn die DB-Sortierung nicht ausreicht
+    // filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     return filtered;
   }, [allPrompts, selectedCategory, searchTerm]);
 
-  const groupedPrompts = useMemo(() => groupPromptsByCategory(filteredPrompts), [filteredPrompts]);
-  // Kategorien für die Anzeige sortieren
-  const displayCategories = useMemo(() => Object.keys(groupedPrompts).sort(), [groupedPrompts]);
-
+  // Gruppierungslogik wird nicht mehr benötigt
 
   // === JSX für die Anzeige ===
   return (
@@ -191,7 +163,7 @@ export default function MeinePromptsPage() {
         </Select>
       </div>
 
-      {/* Lade- / Fehler- / Keine-Prompts-Anzeige (bleibt gleich) */}
+      {/* Lade- / Fehler- / Keine-Prompts-Anzeige (bleibt gleich, Nachricht angepasst) */}
       {isLoading && (
         <div className="flex items-center justify-center py-10">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
@@ -207,8 +179,7 @@ export default function MeinePromptsPage() {
       )}
       {!isLoading && !error && allPrompts.length === 0 && (
         <p className="text-center py-10 text-muted-foreground">
-          {/* Angepasste Nachricht je nachdem, ob es der Testuser ist */}
-          {TEST_USER_EMAIL === /* Hier die E-Mail des aktuell eingeloggten Users prüfen, falls verfügbar */ null
+          {currentUserEmail === TEST_USER_EMAIL
             ? "Es wurden keine Prompt-Pakete in der Datenbank gefunden."
             : "Du hast noch keine Prompt-Pakete erworben oder freigeschaltet."}
         </p>
@@ -217,52 +188,52 @@ export default function MeinePromptsPage() {
         <p className="text-center py-10 text-muted-foreground">Keine Prompts entsprechen den aktuellen Filtern.</p>
       )}
 
-
-      {/* Accordion für die Kategorien */}
+      {/* --- NEU: Grid-Layout für die Prompts --- */}
       {!isLoading && !error && filteredPrompts.length > 0 && (
-        <Accordion type="multiple" className="w-full space-y-2">
-          {displayCategories.map((category) => (
-            <AccordionItem value={category} key={category} className="border rounded-md bg-card">
-              <AccordionTrigger className="text-base font-semibold px-4 py-3 hover:no-underline">
-                <div className="flex justify-between items-center w-full">
-                    <span>{category}</span>
-                    <span className="text-sm font-normal text-muted-foreground ml-2">
-                      ({groupedPrompts[category].length})
-                    </span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-4 pb-3">
-                <div className="border-t pt-2">
-                  {groupedPrompts[category].map((prompt, promptIndex) => (
-                    <div
-                      key={prompt.id}
-                      className={cn( // cn für bedingte Klassen
-                        "flex items-center justify-between py-2",
-                        promptIndex < groupedPrompts[category].length - 1 ? 'border-b' : '' // Nur Border, wenn nicht das letzte Element
-                      )}
-                    >
-                      {/* Linke Seite: Name */}
-                      <div className="flex-grow mr-4">
-                        <span className="font-medium text-sm">{prompt.name || 'Unbenanntes Paket'}</span>
-                      </div>
-                      {/* Rechte Seite: Button */}
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/prompt/${prompt.slug || prompt.id}`}>
-                          {/* Inhalt in ein span gewrappt */}
-                          <span className="flex items-center">
-                            Nutzen
-                            <ChevronRight className="ml-1 h-4 w-4" />
-                          </span>
-                        </Link>
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+        <>
+          {/* Optionale Überschrift für gefilterte Kategorie */}
+          {selectedCategory !== 'all' && (
+            <h2 className="text-xl font-medium border-b pb-2 mb-4">
+              Prompts in Kategorie: {selectedCategory}
+            </h2>
+          )}
+
+          {/* Das Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+            {filteredPrompts.map((prompt) => (
+              // Hier verwenden wir die Card-Komponente
+              <Card key={prompt.id} className="flex flex-col h-full transition-all duration-300 ease-in-out hover:shadow-lg hover:-translate-y-1">
+                <CardHeader>
+                  <CardTitle className="text-base">{prompt.name || 'Unbenanntes Paket'}</CardTitle>
+                  {/* Kategorie als Badge anzeigen */}
+                  {prompt.category && (
+                    <Badge variant="secondary" className="mt-1 w-fit">{prompt.category}</Badge>
+                  )}
+                </CardHeader>
+                {/* Beschreibung nur anzeigen, wenn vorhanden */}
+                {prompt.description && (
+                  <CardContent className="flex-grow">
+                    <p className="text-sm text-muted-foreground line-clamp-3">
+                      {prompt.description}
+                    </p>
+                  </CardContent>
+                )}
+                {/* Wenn keine Beschreibung, aber Platz benötigt wird */}
+                {!prompt.description && <CardContent className="flex-grow"></CardContent>}
+                <CardFooter>
+                  <Button asChild className="w-full" size="sm">
+                    <Link href={`/prompt/${prompt.slug || prompt.id}`}>
+                      Prompt <ChevronRight className="ml-1 h-4 w-4" />
+                    </Link>
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
+      {/* --- Ende Grid-Layout --- */}
+
     </div>
   );
 }
