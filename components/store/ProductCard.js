@@ -1,8 +1,8 @@
 // components/store/ProductCard.js
 
-"use client";
+// "use client"; // Nicht mehr zwingend nötig, da keine Klick-Handler mehr direkt hier sind
 
-import Link from 'next/link';
+import Link from 'next/link'; // Wichtig: Link importieren
 import {
   Card,
   CardContent,
@@ -12,11 +12,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useState, useTransition } from 'react';
-import { createCheckoutSession } from '@/app/actions'; // Unsere Server Action
-import { loadStripe } from '@stripe/stripe-js';     // Stripe Client-Bibliothek
+// useState, useTransition, createCheckoutSession, loadStripe werden hier nicht mehr benötigt
 
-// Hilfsfunktion zum Formatieren des Preises
+// Hilfsfunktion zum Formatieren des Preises (kann bleiben, falls du sie woanders brauchst oder hier wieder einsetzt)
 function formatPrice(amount) {
   if (typeof amount !== 'number' || isNaN(amount)) {
     return '';
@@ -29,68 +27,16 @@ function formatPrice(amount) {
 
 // Komponente ProductCard
 export function ProductCard({ prompt }) {
-  const [isPending, startTransition] = useTransition();
+  // Kein isPending State und kein handleCheckout Handler mehr nötig
 
   if (!prompt) {
     return null;
   }
 
+  // Stelle sicher, dass das prompt-Objekt einen 'slug' hat.
+  // Falls nicht, musst du ihn ggf. in der /pakete Seite hinzufügen oder hier eine ID verwenden.
+  const checkoutUrl = prompt.slug ? `/checkout/${prompt.slug}` : null;
   const displayPrice = formatPrice(prompt.price);
-
-  // Checkout Funktion
-  const handleCheckout = async () => {
-    console.log("Checkout gestartet für Preis-ID:", prompt.stripe_price_id, "Paket-ID:", prompt.id);
-
-    if (!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) {
-      console.error("FEHLER: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ist nicht in .env.local gesetzt!");
-      alert("Ein Konfigurationsfehler ist aufgetreten.");
-      return;
-    }
-    if (!prompt.stripe_price_id || !prompt.id) {
-      alert("Fehler: Produktinformationen unvollständig.");
-      return;
-    }
-
-    startTransition(async () => {
-      try {
-        // Server Action aufrufen
-        const resultString = await createCheckoutSession(prompt.stripe_price_id, prompt.id);
-        const result = JSON.parse(resultString);
-
-        if (result.error) {
-          console.error("Fehler von Server Action erhalten:", result.error);
-          alert(`Fehler: ${result.error}`);
-          return;
-        }
-
-        if (result.sessionId) {
-          console.log("Stripe Session ID erhalten:", result.sessionId);
-          const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
-
-          if (!stripe) {
-            throw new Error("Stripe.js konnte nicht initialisiert werden.");
-          }
-
-          console.log("Leite zu Stripe Checkout weiter...");
-          const { error: stripeRedirectError } = await stripe.redirectToCheckout({
-            sessionId: result.sessionId
-          });
-
-          if (stripeRedirectError) {
-            console.error("Stripe Redirect Fehler:", stripeRedirectError);
-            alert(`Fehler bei der Weiterleitung zu Stripe: ${stripeRedirectError.message}`);
-          }
-        } else {
-          console.error("Unerwartete Antwort von Server Action:", result);
-          alert("Ein unerwarteter Fehler ist aufgetreten.");
-        }
-      } catch (error) {
-        console.error("Fehler im handleCheckout Prozess:", error);
-        alert(`Ein Fehler ist aufgetreten: ${error.message || 'Bitte versuchen Sie es erneut.'}`);
-      }
-    });
-  };
-  // Ende Checkout Funktion
 
   // JSX für die Karte mit Hover-Effekten
   return (
@@ -107,15 +53,24 @@ export function ProductCard({ prompt }) {
         {displayPrice && (
           <p className="text-2xl font-bold text-primary mb-4">{displayPrice}</p>
         )}
+        {/* Hier könntest du weitere Details anzeigen, falls gewünscht */}
       </CardContent>
       <CardFooter>
-        <Button
-          className="w-full"
-          onClick={handleCheckout}
-          disabled={isPending || !prompt.stripe_price_id}
-        >
-          {isPending ? 'Bitte warten...' : 'Jetzt Kaufen'}
-        </Button>
+        {/* --- GEÄNDERTER BUTTON -> LINK --- */}
+        {/* Prüfe, ob eine URL vorhanden ist (also ein Slug existiert) */}
+        {checkoutUrl ? (
+          <Button asChild className="w-full">
+            {/* Der Link führt zur Checkout-Seite mit dem Slug des Pakets */}
+            <Link href={checkoutUrl}>
+              Details & Kaufen {/* Text angepasst */}
+            </Link>
+          </Button>
+        ) : (
+          <Button disabled className="w-full">
+            Kauf nicht möglich {/* Fallback, falls kein Slug */}
+          </Button>
+        )}
+        {/* --- ENDE LINK --- */}
       </CardFooter>
     </Card>
   );

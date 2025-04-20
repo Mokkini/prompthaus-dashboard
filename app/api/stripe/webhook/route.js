@@ -13,7 +13,7 @@ export const config = {
 
 // 2) Stripe initialisieren
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2022-11-15',
+  apiVersion: '2022-11-15', // Oder deine verwendete Version
 });
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -33,9 +33,9 @@ export async function POST(req) {
   let event;
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-    console.log(`[Webhook] Event received: ${event.type}`);
+    console.log(`[Webhook] Stripe Event received: ${event.type}`);
   } catch (err) {
-    console.error('❌ Webhook signature verification failed:', err.message);
+    console.error('❌ Stripe Webhook signature verification failed:', err.message);
     return NextResponse.json(
       { error: `Webhook Error: ${err.message}` },
       { status: 400 }
@@ -52,7 +52,7 @@ export async function POST(req) {
 
     if (!email || !promptPackageId) {
       console.error(
-        `[Webhook] Ungültige Session-Daten für ${stripeSessionId}:`,
+        `[Webhook] Stripe - Ungültige Session-Daten für ${stripeSessionId}:`,
         { email, promptPackageId }
       );
       return NextResponse.json(
@@ -61,92 +61,114 @@ export async function POST(req) {
       );
     }
 
+    console.log(`[Webhook] Stripe - Verarbeite Kauf: SessionID=${stripeSessionId}, Email=${email}, PackageID=${promptPackageId}`);
+
     try {
       const supabaseAdmin = createAdminClient();
 
-      // 5a) Prüfen, ob es den User schon gibt
-      const { data: listData, error: listError } =
-        await supabaseAdmin.auth.admin.listUsers();
-      if (listError) throw listError;
+      // 5a) Nutzer finden oder erstellen/einladen (Logik bleibt gleich)
+      let userId;
+      let userJustInvited = false; // Flag für spätere Aktionen (z.B. E-Mail)
 
-      let user = listData.users.find((u) => u.email === email);
-      let userId = user?.id;
+      console.log(`[Webhook] Stripe - Suche Nutzer ${email} via Admin API...`);
+      const { data: listData, error: listError } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
 
-      // 5b) Falls neu: Einladen + Metadaten-Flag setzen
-      if (!userId) {
-        console.log(`[Webhook] Invite new user ${email}...`);
-        const { data: inviteData, error: inviteError } =
-          await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-            redirectTo: 'http://localhost:3000/passwort-festlegen',
-          });
-        if (inviteError && !inviteError.message.includes('already registered')) {
-          throw inviteError;
-        }
-        // Bei "already registered" einfach nochmal suchen
-        if (inviteError?.message.includes('already registered')) {
-          const { data: retryList } =
-            await supabaseAdmin.auth.admin.listUsers();
-          user = retryList.users.find((u) => u.email === email);
-          userId = user?.id;
-        } else {
-          userId = inviteData.user.id;
-          console.log(`[Webhook] Invited user ${email} (ID: ${userId})`);
-          // Flag setzen
-          const { error: metaError } =
-            await supabaseAdmin.auth.admin.updateUserById(userId, {
-              user_metadata: { needs_password_setup: true },
-            });
-          if (metaError) {
-            console.error(
-              `[Webhook] Flag setzen fehlgeschlagen für ${userId}:`,
-              metaError
-            );
-          } else {
-            console.log(`[Webhook] Flag needs_password_setup gesetzt für ${userId}`);
-          }
-        }
-      } else {
-        console.log(`[Webhook] Existing user ${email} (ID: ${userId})`);
+      if (listError) {
+           console.error(`[Webhook] Stripe - Fehler beim Auflisten der Nutzer:`, listError);
+           throw new Error(`Fehler beim Auflisten der Nutzer: ${listError.message}`);
       }
 
-      // 5c) Kauf in DB eintragen
+      const existingUser = listData?.users.find((u) => u.email === email);
+
+      if (existingUser) {
+          userId = existingUser.id;
+          console.log(`[Webhook] Stripe - Nutzer ${email} über listUsers gefunden mit ID: ${userId}`);
+      } else {
+          console.log(`[Webhook] Stripe - Nutzer ${email} nicht gefunden. Lade ein...`);
+          try {
+              // Wichtig: Keine Redirect URL hier, da der Nutzer den Link per Mail bekommt
+              const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {});
+
+              if (inviteError) {
+                  if (inviteError.message.includes('User already registered')) {
+                       console.warn(`[Webhook] Stripe - Invite fehlgeschlagen für ${email}, Nutzer existiert bereits (laut Fehler). Versuche erneut zu finden...`);
+                       const { data: listDataRetry, error: listRetryError } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+                       if (listRetryError) throw new Error('Fehler beim erneuten Auflisten der Nutzer nach Invite-Fehler.');
+                       const userRetry = listDataRetry.users.find((u) => u.email === email);
+                       if (!userRetry) throw new Error('Nutzer existiert laut Fehler, konnte aber auch nach erneutem Suchen nicht gefunden werden.');
+                       userId = userRetry.id;
+                       console.log(`[Webhook] Stripe - Nutzer ${email} nach erneutem Suchen gefunden mit ID: ${userId}`);
+                  } else {
+                      throw inviteError;
+                  }
+              } else if (!inviteData?.user?.id) {
+                  throw new Error('Einladung erfolgreich, aber keine User-ID in der Antwort.');
+              } else {
+                  userId = inviteData.user.id;
+                  userJustInvited = true;
+                  console.log(`[Webhook] Stripe - Nutzer ${email} eingeladen mit ID: ${userId}`);
+                  // Flag für Passwort-Setup wird von Supabase bei Invite automatisch gesetzt
+              }
+          } catch (inviteError) {
+              console.error(`[Webhook] Stripe - Fehler beim Einladen von ${email}:`, inviteError);
+              throw new Error(`Fehler beim Einladen des Nutzers: ${inviteError.message}`);
+          }
+      }
+
+
+      // 5c) Kauf in DB eintragen (Angepasst)
       if (userId) {
         const { error: insertError } = await supabaseAdmin
           .from('user_purchases')
           .insert({
             user_id: userId,
-            prompt_package_id: promptPackageId,
+            prompt_package_id: promptPackageId, // Spaltenname prüfen!
             stripe_checkout_session_id: stripeSessionId,
-            purchased_at: purchasedAt,
+            purchased_at: purchasedAt.toISOString(), // Sicherstellen, dass es ISO String ist
+            // --- HINZUGEFÜGT ---
+            payment_provider: 'stripe',
+            transaction_id: null // Setze PayPal Order ID auf null
+            // --- ENDE HINZUGEFÜGT ---
           });
+
         if (insertError) {
-          if (insertError.code === '23505') {
+          if (insertError.code === '23505') { // Eindeutigkeitsverletzung
             console.warn(
-              `[Webhook] Purchase für Session ${stripeSessionId} bereits eingetragen.`
+              `[Webhook] Stripe - Kauf für Session ${stripeSessionId} wurde bereits verarbeitet.`
             );
+            // Trotzdem 200 OK senden
+            return NextResponse.json({ received: true, status: 'already_processed' });
           } else {
             console.error(
-              `[Webhook] DB-Error für Session ${stripeSessionId}, User ${userId}:`,
+              `[Webhook] Stripe - Fehler beim Speichern des Kaufs für User ${userId}, Session ${stripeSessionId}:`,
               insertError
             );
+            throw new Error(`Fehler beim Speichern des Kaufs: ${insertError.message}`);
           }
         } else {
           console.log(
-            `[Webhook] Purchase eingetragen für User ${userId}, Paket ${promptPackageId}`
+            `[Webhook] Stripe - Kauf erfolgreich gespeichert für User ${userId}, Paket ${promptPackageId}, Session ${stripeSessionId}`
           );
+          // Hier könnte man ggf. noch die Willkommens-E-Mail triggern, falls userJustInvited true ist
         }
+      } else {
+         // Sollte eigentlich nicht passieren, wenn die Logik oben stimmt
+         console.error(`[Webhook] Stripe - Keine User ID gefunden oder erstellt für ${email}. Kauf kann nicht gespeichert werden.`);
+         throw new Error(`Konnte keine User ID für ${email} ermitteln.`);
       }
+
     } catch (err) {
-      console.error('[Webhook] Fehler bei checkout.session.completed:', err);
+      console.error('[Webhook] Stripe - Fehler bei der Verarbeitung von checkout.session.completed:', err);
+      // Bei internen Fehlern 500 senden, damit Stripe es ggf. erneut versucht
       return NextResponse.json(
-        { error: 'Internal Server Error' },
+        { error: `Webhook processing error: ${err.message}` },
         { status: 500 }
       );
     }
   } else {
-    console.log(`[Webhook] Ignoriere Event-Typ: ${event.type}`);
+    console.log(`[Webhook] Stripe - Ignoriere Event-Typ: ${event.type}`);
   }
 
-  // 6) Always return a 200 to Stripe
+  // 6) Immer 200 OK an Stripe senden, wenn kein interner Fehler auftrat
   return NextResponse.json({ received: true });
 }

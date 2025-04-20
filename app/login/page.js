@@ -3,18 +3,18 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link'; // Import für "Registrieren"-Link hinzugefügt
+import Link from 'next/link';
+import Image from 'next/image'; // <-- NEU: Image importieren
 import { login } from '../actions';
 
 // Shadcn UI Komponenten
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-// Card wird im neuen Layout nicht mehr als Hauptcontainer verwendet, aber Alert schon
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from 'lucide-react';
 // Ggf. Icons für OAuth Buttons (optional)
-// import { Icons } from "@/components/icons" // Beispiel: Falls du Icons für Google/GitHub hast
+// import { Icons } from "@/components/icons"
 
 export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState('');
@@ -29,7 +29,7 @@ export default function LoginPage() {
     startTransition(async () => {
       const result = await login(formData);
       if (result.success) {
-        console.log("Action success, redirecting to:", result.redirectTo);
+        // console.log("Action success, redirecting to:", result.redirectTo); // Für Live-Betrieb entfernt
         router.push(result.redirectTo);
         // router.refresh(); // Optional
       } else {
@@ -46,11 +46,24 @@ export default function LoginPage() {
       <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
         {/* Hintergrundbild oder Farbe */}
         <div className="absolute inset-0 bg-zinc-900" />
-        {/* Logo oder Branding */}
-        <div className="relative z-20 flex items-center text-lg font-medium">
-          <svg /* Optional: Dein Logo SVG */ xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 h-6 w-6"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" /></svg>
-          PromptHaus
-        </div>
+
+        {/* --- Logo oder Branding mit Link zur Startseite --- */}
+        <Link href="/" className="relative z-20 flex items-center text-lg font-medium hover:opacity-80 transition-opacity">
+          {/* --- SVG ERSETZT DURCH IMAGE --- */}
+          <Image
+            src="/prompthaus-logo.png" // Pfad zum Logo im public-Ordner
+            alt="PromptHaus Logo"
+            width={150} // Breite anpassen nach Bedarf
+            height={38} // Höhe anpassen nach Bedarf (Seitenverhältnis beachten)
+            priority // Wichtig für LCP (Largest Contentful Paint)
+            className="mr-2" // Optional: Abstand zum Text
+          />
+          {/* --- ENDE ERSETZUNG --- */}
+          {/* Der Text "PromptHaus" kann bleiben oder entfernt werden, je nach Design */}
+          {/* PromptHaus */}
+        </Link>
+        {/* --- Ende Logo/Branding mit Link --- */}
+
         {/* Optional: Zitat oder Slogan unten */}
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">
@@ -133,36 +146,15 @@ export default function LoginPage() {
             </form>
 
             {/* Trenner (Optional, falls OAuth-Buttons folgen) */}
-            {/*
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">
-                  Oder weiter mit
-                </span>
-              </div>
-            </div>
-            */}
+            {/* ... */}
 
             {/* OAuth Buttons (Optional) */}
-            {/*
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" type="button" disabled={isPending}>
-                {isPending ? ( <Loader2 className="mr-2 h-4 w-4 animate-spin" /> ) : ( <Icons.gitHub className="mr-2 h-4 w-4" />)}{" "} GitHub
-              </Button>
-              <Button variant="outline" type="button" disabled={isPending}>
-                 {isPending ? ( <Loader2 className="mr-2 h-4 w-4 animate-spin" /> ) : ( <Icons.google className="mr-2 h-4 w-4" />)}{" "} Google
-              </Button>
-            </div>
-             */}
+            {/* ... */}
           </div>
 
           {/* Link zur Registrierung */}
           <p className="px-8 text-center text-sm text-muted-foreground">
             Noch kein Konto?{" "}
-            {/* Passe den Link zur Registrierungsseite an! */}
             <Link
               href="/signup" // oder /registrieren
               className="underline underline-offset-4 hover:text-primary"
