@@ -529,7 +529,7 @@ export default function PromptInteraction({ variants, slug }) {
       {generationVariants.length > 1 && (
         <div>
           <h2 className="text-lg font-semibold mb-4 text-center md:text-left">Variante auswählen:</h2>
-          <div className="flex flex-wrap gap-3 justify-center">
+          <div className="flex flex-wrap gap-3 justify-center px-2"> {/* <--- Padding hier */}
             {generationVariants.map((variant) => (
               <button
                 key={variant.id}
@@ -540,7 +540,7 @@ export default function PromptInteraction({ variants, slug }) {
                   "p-4 border rounded-lg text-left transition-all duration-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
                   variant.id === selectedVariantId
                     ? "bg-primary/10 border-primary ring-2 ring-primary ring-offset-2 dark:bg-primary/20"
-                    : "bg-card border-border hover:border-muted-foreground/50",
+                    : "bg-card border-muted-foreground hover:border-muted-foreground/50",
                   (loading || isRefining) && "opacity-50 cursor-not-allowed"
                 )}
               >
@@ -558,9 +558,10 @@ export default function PromptInteraction({ variants, slug }) {
 
       {/* Haupt-Grid */}
       {currentVariant ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 px-2"> {/* <--- Padding hier */}
           {/* Linke Spalte: Eingabe */}
-          <Card>
+          {/* --- KORREKTUR: Klasse hier im Card-Tag --- */}
+          <Card className="border-input">
             <CardHeader>
               <CardTitle>{currentVariant?.title || 'Deine Eingaben'}</CardTitle>
               {currentVariant?.description && (
@@ -604,13 +605,11 @@ export default function PromptInteraction({ variants, slug }) {
                 >
                   <AccordionItem value="optional-fields" className="border-b-0">
                   <AccordionTrigger className={cn(
-    "text-base font-semibold hover:no-underline", // Bisherige Klassen
-    // --- Diese Klassen machen den Trigger auffälliger ---
-    "p-4 rounded-md bg-muted/60 hover:bg-muted/80 transition-colors w-full flex justify-between items-center"
-    // --- Ende neue Klassen ---
-)}>
-  Optionale Angaben (aufklappen)
-</AccordionTrigger>
+                      "text-base font-semibold hover:no-underline",
+                      "p-4 rounded-md bg-muted/60 hover:bg-muted/80 transition-colors w-full flex justify-between items-center"
+                    )}>
+                      Optionale Angaben (aufklappen)
+                    </AccordionTrigger>
                     <AccordionContent className="pt-4 space-y-4">
                       {renderSemanticFields(semanticDataInfo, true)}
                     </AccordionContent>
@@ -633,7 +632,8 @@ export default function PromptInteraction({ variants, slug }) {
           </Card>
 
           {/* Rechte Spalte: Ausgabe */}
-          <Card className="flex flex-col">
+          {/* --- KORREKTUR: Klasse hier im Card-Tag --- */}
+          <Card className="flex flex-col border-input">
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Generierter Text</CardTitle>

@@ -1,58 +1,40 @@
-// components/EditPromptForm.js - Mit react-json-editor-ajrm
+// components/EditPromptForm.js - Zurück zu Textarea
 
 "use client";
 
-import { useState, useEffect } from 'react';
-import { updatePromptPackage } from '@/app/actions'; // Pfad ggf. anpassen
+import { useState, useEffect, useRef } from 'react';
+import { updatePromptPackage } from '@/app/admin/prompts/actions'; // Pfad prüfen!
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea"; // Behalten für Description
+import { Textarea } from "@/components/ui/textarea"; // Standard Textarea
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-// --- NEU: JSON Editor importieren ---
-import JSONInput from 'react-json-editor-ajrm';
-import locale from 'react-json-editor-ajrm/locale/en'; // Oder 'de', falls verfügbar und gewünscht
+// --- JSONInput und locale entfernt ---
 
 export default function EditPromptForm({ initialData }) {
-  if (!initialData || !initialData.promptPackage) {
-    return (
-      <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Fehler</AlertTitle>
-        <AlertDescription>
-          Fehler beim Laden der Paketdaten. Das Formular kann nicht angezeigt werden.
-        </AlertDescription>
-      </Alert>
-    );
-  }
+  const [name, setName] = useState(initialData?.promptPackage?.name || '');
+  const [slug, setSlug] = useState(initialData?.promptPackage?.slug || '');
+  const [description, setDescription] = useState(initialData?.promptPackage?.description || '');
+  const [category, setCategory] = useState(initialData?.promptPackage?.category || '');
 
-  const { promptPackage, variants: initialVariants } = initialData;
-
-  // State für Formularfelder (bleibt gleich)
-  const [name, setName] = useState(promptPackage.name || '');
-  const [slug, setSlug] = useState(promptPackage.slug || '');
-  const [description, setDescription] = useState(promptPackage.description || '');
-  const [category, setCategory] = useState(promptPackage.category || '');
-
-  // --- State für JSON angepasst ---
-  // Wir speichern das geparste Objekt für den Editor
-  const [variantsObject, setVariantsObject] = useState({ generation_variants: initialVariants || [] });
-  // Wir behalten auch den String für die Server Action und die ursprüngliche Validierung
+  // --- Nur noch der JSON-String im State ---
   const [variantsJsonString, setVariantsJsonString] = useState(
-    JSON.stringify({ generation_variants: initialVariants || [] }, null, 2)
+    // Initialisiere mit formatiertem JSON oder leerem String
+    initialData?.variants ? JSON.stringify({ generation_variants: initialData.variants }, null, 2) : '{\n  "generation_variants": []\n}'
   );
 
-  // State für Nachrichten und Zustand (bleibt gleich)
   const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState(null); // 'success' | 'error' | null
+  const [messageType, setMessageType] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [jsonError, setJsonError] = useState(''); // Für unsere Struktur-Validierung
+  // --- jsonError State bleibt für Fehler beim Submit ---
+  const [jsonError, setJsonError] = useState('');
 
-  // --- Struktur-Validierung (bleibt wichtig!) ---
-  // Diese Funktion prüft die *Struktur*, nicht nur die Syntax
+  // --- Debounce Ref wird nicht mehr benötigt ---
+  // const debounceTimeoutRef = useRef(null);
+
+  // --- Struktur-Validierung (bleibt für Submit-Prüfung) ---
   const validateStructure = (variantsArray) => {
     try {
       if (!Array.isArray(variantsArray)) {
@@ -76,79 +58,89 @@ export default function EditPromptForm({ initialData }) {
     }
   };
 
-  // --- Handler für Änderungen im JSON Editor ---
-  const handleEditorChange = (jsObject) => {
-    // jsObject enthält { jsObject, error, json }
-    if (jsObject.error) {
-      // Syntaxfehler vom Editor erkannt
-      setJsonError(`JSON Syntaxfehler: ${jsObject.error.reason} (Zeile ${jsObject.error.line})`);
-      // Objekt-State nicht aktualisieren, String-State auch nicht
-      // Wichtig: Den String-State hier *nicht* setzen, da er ungültig ist!
-    } else {
-      // Keine Syntaxfehler -> Struktur prüfen
-      const structureValidation = validateStructure(jsObject.jsObject?.generation_variants);
-      if (structureValidation.valid) {
-        setJsonError(''); // Alle Fehler löschen
-        setVariantsObject(jsObject.jsObject); // Objekt-State aktualisieren
-        // String-State für die Server Action aktualisieren (formatiert)
-        setVariantsJsonString(JSON.stringify(jsObject.jsObject, null, 2));
-      } else {
-        // Syntax ok, aber Struktur nicht
-        setJsonError(structureValidation.error);
-        setVariantsObject(jsObject.jsObject); // Objekt trotzdem setzen, damit User weiter editieren kann
-        // String-State *nicht* setzen, da Struktur ungültig ist
-        // Alternativ: String setzen, aber Fehler anzeigen
-        setVariantsJsonString(JSON.stringify(jsObject.jsObject, null, 2)); // Setzen, damit Submit fehlschlägt
-      }
-    }
-  };
+  // --- handleEditorChange wird nicht mehr benötigt ---
 
-  // Effekt, um die Struktur beim initialen Laden zu prüfen (optional, aber gut)
+  // --- useEffect für Timeout Cleanup wird nicht mehr benötigt ---
+
+  // --- useEffect für initiale Validierung (kann entfernt oder angepasst werden) ---
+  // Da wir keine Live-Validierung mehr haben, ist dieser Effekt weniger kritisch.
+  // Man könnte ihn lassen, um *beim Laden* einen Fehler anzuzeigen, falls die initialen Daten ungültig sind.
   useEffect(() => {
-    const initialValidation = validateStructure(variantsObject.generation_variants);
-    if (!initialValidation.valid) {
-      setJsonError(initialValidation.error);
+    if (initialData?.variants) {
+      try {
+        // Nur Struktur prüfen, Syntax wird durch stringify sichergestellt
+        const initialValidation = validateStructure(initialData.variants);
+        if (!initialValidation.valid) {
+          setJsonError(`Warnung: Die initial geladenen Daten haben eine ungültige Struktur: ${initialValidation.error}`);
+          // Optional: messageType auf 'warning' setzen
+        }
+      } catch (e) {
+         // Sollte durch stringify nicht passieren, aber sicher ist sicher
+         setJsonError(`Warnung: Fehler beim Verarbeiten der initialen Daten: ${e.message}`);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Nur einmal beim Mounten
 
-  // Submit Handler (prüft jetzt nur noch jsonError State)
+  // --- Submit Handler (ANGEPASST: Validierung hier) ---
   const handleSubmit = async (event) => {
     event.preventDefault();
+    setJsonError(''); // Fehler vor jeder Prüfung zurücksetzen
+    setMessage('');
+    setMessageType(null);
 
-    // Prüfen, ob ein Fehler im jsonError State vorliegt
-    if (jsonError) {
-      setMessage(`Fehler: Bitte korrigiere die Fehler im Varianten-JSON.`);
+    let parsedVariants;
+    let variantsArray;
+
+    // 1. Syntax-Prüfung (JSON.parse)
+    try {
+      parsedVariants = JSON.parse(variantsJsonString);
+      // Prüfen, ob das Top-Level-Objekt 'generation_variants' enthält
+      if (!parsedVariants || typeof parsedVariants !== 'object' || !parsedVariants.hasOwnProperty('generation_variants')) {
+          throw new Error("Das JSON muss ein Objekt mit einem Schlüssel 'generation_variants' sein.");
+      }
+      variantsArray = parsedVariants.generation_variants; // Array extrahieren
+    } catch (parseError) {
+      setJsonError(`JSON Syntaxfehler: ${parseError.message}`);
+      setMessage(`Fehler: Das eingegebene JSON ist syntaktisch ungültig.`);
       setMessageType('error');
-      // Fokus auf den Editor setzen (optional)
-      // document.getElementById('variants-json-editor')?.focus();
       return;
     }
-    // Prüfen, ob das Feld (jetzt der String) leer ist
-    if (!variantsJsonString.trim() || variantsJsonString === '{}' || variantsJsonString === '{"generation_variants":[]}') {
-        setMessage(`Fehler: Das Varianten-JSON darf nicht leer sein oder muss mindestens eine Variante enthalten.`);
+
+    // 2. Struktur-Prüfung (validateStructure)
+    const structureValidation = validateStructure(variantsArray);
+    if (!structureValidation.valid) {
+      setJsonError(structureValidation.error);
+      setMessage(`Fehler: Die JSON-Struktur ist ungültig. ${structureValidation.error}`);
+      setMessageType('error');
+      return;
+    }
+
+    // 3. Prüfung auf leeres Array (optional, je nach Anforderung)
+    if (!Array.isArray(variantsArray) || variantsArray.length === 0) {
+        setMessage(`Fehler: Das 'generation_variants'-Array darf nicht leer sein.`);
         setMessageType('error');
         return;
     }
 
+    // Wenn alle Prüfungen ok sind:
     setIsSubmitting(true);
-    setMessage('');
-    setMessageType(null);
 
     const formData = new FormData();
-    formData.append('packageId', promptPackage.id);
+    formData.append('packageId', initialData?.promptPackage?.id);
     formData.append('name', name);
     formData.append('description', description);
     formData.append('category', category);
-    // --- WICHTIG: Den validierten JSON-String senden ---
-    formData.append('variantsJson', variantsJsonString);
+    // Sende den validierten und geparsten String (optional neu formatiert)
+    formData.append('variantsJson', JSON.stringify(parsedVariants, null, 2));
 
     const result = await updatePromptPackage(formData);
 
     if (result.success) {
       setMessage(result.message || 'Änderungen erfolgreich gespeichert.');
       setMessageType('success');
-      // Optional: Weiterleiten oder Seite neu laden
+      // Optional: Den State mit dem erfolgreich gespeicherten, formatierten JSON aktualisieren
+      setVariantsJsonString(JSON.stringify(parsedVariants, null, 2));
     } else {
       setMessage(result.message || 'Ein unbekannter Fehler ist aufgetreten.');
       setMessageType('error');
@@ -156,10 +148,24 @@ export default function EditPromptForm({ initialData }) {
     setIsSubmitting(false);
   };
 
+  // --- Initialisierungs-Check (unverändert) ---
+  if (!initialData || !initialData.promptPackage) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Fehler</AlertTitle>
+        <AlertDescription>
+          Fehler beim Laden der Paketdaten. Das Formular kann nicht angezeigt werden.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  // --- JSX (ANGEPASST: Textarea statt JSONInput) ---
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Felder für name, slug, category, description (bleiben gleich) */}
-      <div className="space-y-2">
+      {/* ... (Felder für name, slug, category, description bleiben gleich) ... */}
+       <div className="space-y-2">
         <Label htmlFor="name">Paket-Name</Label>
         <Input type="text" id="name" name="name" required value={name} onChange={(e) => setName(e.target.value)} disabled={isSubmitting} />
       </div>
@@ -186,44 +192,32 @@ export default function EditPromptForm({ initialData }) {
         <Textarea id="description" name="description" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} disabled={isSubmitting} />
       </div>
 
-      {/* --- Varianten JSON Editor --- */}
+
+      {/* --- Varianten JSON Editor (jetzt Textarea) --- */}
       <div className="space-y-2">
         <Label htmlFor="variants-json-editor">Varianten (JSON)</Label>
-        <div className={cn(
-            "border rounded-md overflow-hidden", // Rahmen um den Editor
-            jsonError && "border-red-500 ring-1 ring-red-500" // Roter Rahmen bei Fehler
-        )}>
-          <JSONInput
-            id='variants-json-editor'
-            // WICHTIG: Das Objekt übergeben
-            placeholder={variantsObject}
-            // Das Locale Objekt übergeben
-            locale={locale}
-            // Farben anpassen (optional, hier Standard)
-            // colors={{ ... }}
-            // Style anpassen (optional)
-            // style={{ ... }}
-            // Unser Handler für Änderungen
-            onChange={handleEditorChange}
-            // Höhe und Breite anpassen
-            height='450px'
-            width='100%'
-            // Wartezeit für onChange-Trigger (optional)
-            // waitAfterKeyPress={1000}
-            // Theme (optional, passt sich oft an, aber man kann es erzwingen)
-            // theme="light_mitsuketa_tribute" // Beispiel
-          />
-        </div>
-         {/* Beschreibung der Struktur (bleibt gleich) */}
+        {/* Standard Textarea verwenden */}
+        <Textarea
+          id="variants-json-editor"
+          value={variantsJsonString}
+          onChange={(e) => setVariantsJsonString(e.target.value)}
+          rows={20} // Höhe anpassen nach Bedarf
+          placeholder={'{\n  "generation_variants": [\n    {\n      "id": "...",\n      "title": "...",\n      ...\n    }\n  ]\n}'}
+          className={cn(
+            "font-mono text-sm", // Monospace für bessere Lesbarkeit
+            jsonError && "border-red-500 ring-1 ring-red-500" // Fehlerhervorhebung
+          )}
+          disabled={isSubmitting}
+        />
          <p className="text-sm text-muted-foreground">
            Struktur pro Variante: {`{ "id": "...", "title": "...", "description": "...", "context": {...}, "semantic_data": {...}, "writing_instructions": {...} }`}
          </p>
-        {/* Fehlermeldung für JSON anzeigen */}
+        {/* Fehlermeldung wird jetzt hauptsächlich beim Submit relevant */}
         {jsonError && <p className="text-sm font-medium text-destructive">{jsonError}</p>}
       </div>
       {/* --- ENDE JSON Editor --- */}
 
-      {/* Feedback Alert (bleibt gleich) */}
+      {/* Feedback Alert (unverändert) */}
       {message && (
         <Alert variant={messageType === 'error' ? 'destructive' : 'default'} className={messageType === 'success' ? 'border-green-500 text-green-700 dark:text-green-300 dark:border-green-700 [&>svg]:text-green-700' : ''}>
           {messageType === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
@@ -232,8 +226,8 @@ export default function EditPromptForm({ initialData }) {
         </Alert>
       )}
 
-      {/* Button (prüft jetzt jsonError State) */}
-      <Button type="submit" disabled={isSubmitting || !!jsonError} className="w-full sm:w-auto">
+      {/* Button (unverändert, Logik für disabled bleibt) */}
+      <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
         {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {isSubmitting ? 'Speichere...' : 'Änderungen speichern'}
       </Button>

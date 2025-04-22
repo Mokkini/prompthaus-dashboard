@@ -1,4 +1,4 @@
-// app/admin/prompts/actions.js - Angepasst für neue DB-Struktur (prompt_packages & prompt_variants)
+// app/admin/prompts/actions.js - Bereinigt (ohne Debug-Logs)
 "use server"; // Wichtig: Definiert dies als Server Action Modul
 
 import { createClient as createServerComponentClient } from '@/lib/supabase/server'; // Client für User Check (Anon Key)
@@ -45,7 +45,7 @@ function validateVariantsJson(variantsJsonString) {
     // Wenn alles ok ist, gib das Array der Varianten zurück
     return { success: true, data: variantsData };
   } catch (e) {
-    console.error("JSON Validierungsfehler:", e.message);
+    console.error("[validateVariantsJson] JSON Validierungsfehler:", e.message);
     return { success: false, message: `Fehler im Varianten JSON: ${e.message}` };
   }
 }
@@ -55,14 +55,14 @@ function validateVariantsJson(variantsJsonString) {
 export async function addPromptPackage(formData) {
   const supabaseUserClient = createServerComponentClient();
 
-  // 1. Prüfen, ob der ausführende User Admin ist (bleibt gleich)
+  // 1. Prüfen, ob der ausführende User Admin ist
   const { data: { user } } = await supabaseUserClient.auth.getUser();
   if (!user || user.email !== process.env.ADMIN_EMAIL) {
-    console.error("Nicht-Admin versuchte, Prompt hinzuzufügen.");
+    console.error("[addPromptPackage] Nicht-Admin versuchte, Prompt hinzuzufügen.");
     return { success: false, message: 'Nicht autorisiert.' };
   }
 
-  // 2. Formulardaten extrahieren (bleibt gleich)
+  // 2. Formulardaten extrahieren
   const rawFormData = {
     name: formData.get('name'),
     slug: formData.get('slug'),
@@ -71,30 +71,31 @@ export async function addPromptPackage(formData) {
     variantsJson: formData.get('variantsJson'),
   };
 
-  // 3. Grundlegende Validierung (bleibt gleich)
+  // 3. Grundlegende Validierung
   if (!rawFormData.name || !rawFormData.slug || !rawFormData.variantsJson || !rawFormData.category) {
+    console.error("[addPromptPackage] Validation failed: Missing required fields.");
     return { success: false, message: 'Bitte alle Pflichtfelder ausfüllen (Name, Slug, Kategorie, Varianten JSON).' };
   }
 
-  // 4. JSON Validierung (nutzt angepasste Funktion)
+  // 4. JSON Validierung
   const validationResult = validateVariantsJson(rawFormData.variantsJson);
   if (!validationResult.success) {
+    console.error("[addPromptPackage] JSON validation failed:", validationResult.message);
     return { success: false, message: validationResult.message };
   }
   const variantsArray = validationResult.data; // Das validierte Array der Varianten
 
-  // 5. Admin Client initialisieren (bleibt gleich)
+  // 5. Admin Client initialisieren
   const supabaseAdmin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  // --- NEU: Transaktionsähnliche Logik (zuerst Paket, dann Varianten) ---
+  // --- Transaktionsähnliche Logik (zuerst Paket, dann Varianten) ---
   let newPackageId = null; // Variable für die ID des neuen Pakets
 
   try {
-    // 6. Paket in prompt_packages einfügen (OHNE prompt_variants Spalte)
-    console.log(`Füge Paket '${rawFormData.name}' hinzu...`);
+    // 6. Paket in prompt_packages einfügen
     const { data: newPackage, error: insertPackageError } = await supabaseAdmin
       .from('prompt_packages')
       .insert({
@@ -102,13 +103,12 @@ export async function addPromptPackage(formData) {
         slug: rawFormData.slug.toLowerCase().replace(/\s+/g, '-'), // Slug normalisieren
         description: rawFormData.description,
         category: rawFormData.category,
-        // prompt_variants: variantsData, // <-- ENTFERNT
       })
       .select('id') // Gib die ID des neuen Pakets zurück
       .single(); // Erwarte genau ein Ergebnis
 
     if (insertPackageError) {
-      console.error("DB Insert Fehler (Paket):", insertPackageError);
+      console.error("[addPromptPackage] DB Insert Fehler (Paket):", insertPackageError);
       if (insertPackageError.code === '23505' && insertPackageError.message.includes('slug')) {
            return { success: false, message: `Fehler: Der Slug '${rawFormData.slug}' existiert bereits.` };
       }
@@ -116,7 +116,6 @@ export async function addPromptPackage(formData) {
     }
 
     newPackageId = newPackage.id; // ID speichern
-    console.log(`Paket ${newPackageId} erstellt. Füge ${variantsArray.length} Varianten hinzu...`);
 
     // 7. Varianten in prompt_variants einfügen
     const variantsToInsert = variantsArray.map(variant => ({
@@ -127,7 +126,6 @@ export async function addPromptPackage(formData) {
       context: variant.context,
       semantic_data: variant.semantic_data,
       writing_instructions: variant.writing_instructions,
-      // created_at, updated_at werden von DB gesetzt (falls konfiguriert)
     }));
 
     const { error: insertVariantsError } = await supabaseAdmin
@@ -135,26 +133,25 @@ export async function addPromptPackage(formData) {
       .insert(variantsToInsert);
 
     if (insertVariantsError) {
-      console.error("DB Insert Fehler (Varianten):", insertVariantsError);
+      console.error("[addPromptPackage] DB Insert Fehler (Varianten):", insertVariantsError);
       // Fehler beim Einfügen der Varianten -> Paket wieder löschen (Rollback-Versuch)
       throw new Error(`Datenbankfehler beim Einfügen der Varianten: ${insertVariantsError.message}`);
     }
 
-    console.log(`${variantsToInsert.length} Varianten für Paket ${newPackageId} erfolgreich hinzugefügt.`);
-
-    // 8. Cache für die Admin-Seite neu validieren (bleibt gleich)
+    // 8. Cache für die Admin-Seite neu validieren
     revalidatePath('/admin/prompts');
 
-    // 9. Erfolgsmeldung zurückgeben (bleibt gleich)
+    // 9. Erfolgsmeldung zurückgeben
     return { success: true, message: 'Prompt-Paket und Varianten erfolgreich erstellt!' };
 
   } catch (error) {
     // Fehlerbehandlung für den gesamten Prozess
-    console.error("Fehler beim Hinzufügen des Pakets/Varianten:", error.message);
+    console.error("[addPromptPackage] Fehler beim Hinzufügen des Pakets/Varianten:", error.message);
     // Wenn ein Paket schon erstellt wurde, versuche es zu löschen
     if (newPackageId) {
-      console.warn(`Versuche, das teilweise erstellte Paket ${newPackageId} zu löschen...`);
+      console.warn(`[addPromptPackage] Versuche, das teilweise erstellte Paket ${newPackageId} zu löschen...`);
       await supabaseAdmin.from('prompt_packages').delete().eq('id', newPackageId);
+      console.log(`[addPromptPackage] Teilweise erstelltes Paket ${newPackageId} gelöscht.`);
     }
     return { success: false, message: `Fehler: ${error.message}. Paket wurde nicht erstellt.` };
   }
@@ -165,13 +162,14 @@ export async function addPromptPackage(formData) {
 export async function updatePromptPackage(formData) {
   const supabaseUserClient = createServerComponentClient();
 
-  // 1. Admin-Prüfung (bleibt gleich)
+  // 1. Admin-Prüfung
   const { data: { user } } = await supabaseUserClient.auth.getUser();
   if (!user || user.email !== process.env.ADMIN_EMAIL) {
+    console.error("[updatePromptPackage] Nicht-Admin versuchte, Prompt zu aktualisieren.");
     return { success: false, message: 'Nicht autorisiert.' };
   }
 
-  // 2. Formulardaten extrahieren (bleibt gleich)
+  // 2. Formulardaten extrahieren
   const rawFormData = {
     packageId: formData.get('packageId'), // ID des zu ändernden Pakets
     name: formData.get('name'),
@@ -181,27 +179,27 @@ export async function updatePromptPackage(formData) {
     // Slug wird NICHT geändert
   };
 
-  // 3. Grundlegende Validierung (bleibt gleich)
+  // 3. Grundlegende Validierung
   if (!rawFormData.packageId || !rawFormData.name || !rawFormData.variantsJson || !rawFormData.category) {
+    console.error("[updatePromptPackage] Validation failed: Missing required fields.");
     return { success: false, message: 'Fehlende Daten (Paket-ID, Name, Kategorie, Varianten JSON sind erforderlich).' };
   }
 
-  // 4. JSON Validierung (nutzt angepasste Funktion)
+  // 4. JSON Validierung
   const validationResult = validateVariantsJson(rawFormData.variantsJson);
   if (!validationResult.success) {
+    console.error("[updatePromptPackage] JSON validation failed:", validationResult.message);
     return { success: false, message: validationResult.message };
   }
   const newVariantsArray = validationResult.data; // Das neue Array der Varianten
 
-  // 5. Admin Client initialisieren (bleibt gleich)
+  // 5. Admin Client initialisieren
   const supabaseAdmin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  console.log(`Aktualisiere Paket mit ID: ${rawFormData.packageId}`);
-
-  // --- NEU: Update-Logik (Paket ändern, alte Varianten löschen, neue einfügen) ---
+  // --- Update-Logik (Paket ändern, alte Varianten löschen, neue einfügen) ---
   try {
     // 6. Paket-Metadaten in prompt_packages aktualisieren
     const { error: updatePackageError } = await supabaseAdmin
@@ -210,29 +208,25 @@ export async function updatePromptPackage(formData) {
         name: rawFormData.name,
         description: rawFormData.description,
         category: rawFormData.category,
-        // prompt_variants wird nicht mehr hier aktualisiert
       })
       .eq('id', rawFormData.packageId);
 
     if (updatePackageError) {
-      console.error("DB Update Fehler (Paket):", updatePackageError);
+      console.error("[updatePromptPackage] DB Update Fehler (Paket):", updatePackageError);
       throw new Error(`Datenbankfehler beim Aktualisieren des Pakets: ${updatePackageError.message}`);
     }
-    console.log(`Paket-Metadaten für ${rawFormData.packageId} aktualisiert.`);
 
     // 7. Alte Varianten für dieses Paket löschen
-    console.log(`Lösche alte Varianten für Paket ${rawFormData.packageId}...`);
     const { error: deleteVariantsError } = await supabaseAdmin
       .from('prompt_variants')
       .delete()
       .eq('package_id', rawFormData.packageId);
 
     if (deleteVariantsError) {
-      console.error("DB Delete Fehler (Alte Varianten):", deleteVariantsError);
+      console.error("[updatePromptPackage] DB Delete Fehler (Alte Varianten):", deleteVariantsError);
       // Kritischer Fehler, da Paket-Metadaten schon geändert wurden!
       throw new Error(`Fehler beim Löschen alter Varianten: ${deleteVariantsError.message}. Paket ist inkonsistent!`);
     }
-    console.log(`Alte Varianten für Paket ${rawFormData.packageId} gelöscht.`);
 
     // 8. Neue Varianten einfügen
     const variantsToInsert = newVariantsArray.map(variant => ({
@@ -247,160 +241,142 @@ export async function updatePromptPackage(formData) {
 
     // Nur einfügen, wenn es neue Varianten gibt
     if (variantsToInsert.length > 0) {
-        console.log(`Füge ${variantsToInsert.length} neue Varianten für Paket ${rawFormData.packageId} hinzu...`);
         const { error: insertVariantsError } = await supabaseAdmin
           .from('prompt_variants')
           .insert(variantsToInsert);
 
         if (insertVariantsError) {
-          console.error("DB Insert Fehler (Neue Varianten):", insertVariantsError);
+          console.error("[updatePromptPackage] DB Insert Fehler (Neue Varianten):", insertVariantsError);
           // Wieder kritisch, da alte Varianten weg sind!
           throw new Error(`Fehler beim Einfügen der neuen Varianten: ${insertVariantsError.message}. Paket ist inkonsistent!`);
         }
-        console.log(`Neue Varianten für Paket ${rawFormData.packageId} hinzugefügt.`);
-    } else {
-        console.log(`Keine neuen Varianten zum Einfügen für Paket ${rawFormData.packageId}.`);
     }
 
-
-    // 9. Cache für relevante Seiten neu validieren (bleibt gleich)
+    // 9. Cache für relevante Seiten neu validieren
     revalidatePath('/admin/prompts'); // Liste aktualisieren
     revalidatePath(`/admin/prompts/edit/${rawFormData.packageId}`); // Diese Editier-Seite auch
     // Optional: Slug holen und Nutzer-Seite revalidieren
     const { data: pkg } = await supabaseAdmin.from('prompt_packages').select('slug').eq('id', rawFormData.packageId).single();
     if (pkg?.slug) {
         revalidatePath(`/prompt/${pkg.slug}`);
-        console.log(`Cache für /prompt/${pkg.slug} revalidiert.`);
     }
 
-    // 10. Erfolgsmeldung zurückgeben (bleibt gleich)
-    console.log(`Paket ${rawFormData.packageId} erfolgreich aktualisiert.`);
+    // 10. Erfolgsmeldung zurückgeben
     return { success: true, message: 'Prompt-Paket erfolgreich aktualisiert!' };
 
   } catch (error) {
      // Fehlerbehandlung für den gesamten Update-Prozess
-     console.error("Fehler beim Aktualisieren des Pakets/Varianten:", error.message);
+     console.error("[updatePromptPackage] CATCH BLOCK - Fehler beim Aktualisieren des Pakets/Varianten:", error.message);
      return { success: false, message: `Fehler: ${error.message}. Das Paket ist möglicherweise in einem inkonsistenten Zustand!` };
   }
 }
 
 
 // --- deletePromptPackage (ANGEPASST für zwei Tabellen und direktes ID-Argument) ---
-// Nimmt jetzt direkt packageId entgegen (wie im DeletePromptButton verwendet)
 export async function deletePromptPackage(packageId) {
   const supabaseUserClient = createServerComponentClient();
 
-  // 1. Admin-Prüfung (bleibt gleich)
+  // 1. Admin-Prüfung
   const { data: { user } } = await supabaseUserClient.auth.getUser();
   if (!user || user.email !== process.env.ADMIN_EMAIL) {
-    console.error("Nicht-Admin versuchte, Prompt zu löschen.");
+    console.error("[deletePromptPackage] Nicht-Admin versuchte, Prompt zu löschen.");
     return { success: false, message: 'Aktion fehlgeschlagen.' }; // Generische Meldung
   }
 
   // 2. ID-Prüfung
   if (!packageId) {
+    console.error("[deletePromptPackage] Validation failed: Missing packageId.");
     return { success: false, message: 'Fehlende Paket-ID zum Löschen.' };
   }
 
-  console.log(`Admin ${user.email} versucht Paket mit ID ${packageId} zu löschen.`);
-
-  // 3. Admin Client initialisieren (bleibt gleich)
+  // 3. Admin Client initialisieren
   const supabaseAdmin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  // --- NEU: Löschen aus beiden Tabellen ---
-  // WICHTIG: Die Reihenfolge kann relevant sein, wenn keine Cascade Deletes eingerichtet sind.
-  // Sicherer ist es, zuerst die abhängigen Daten (Varianten) zu löschen.
+  // --- Löschen aus beiden Tabellen ---
   try {
     // 4. Varianten aus prompt_variants löschen
-    console.log(`Lösche Varianten für Paket ${packageId}...`);
     const { error: deleteVariantsError } = await supabaseAdmin
       .from('prompt_variants')
       .delete()
       .eq('package_id', packageId);
 
     if (deleteVariantsError) {
-      console.error("DB Delete Fehler (Varianten):", deleteVariantsError);
-      // Fehler werfen, um den Prozess abzubrechen
+      console.error("[deletePromptPackage] DB Delete Fehler (Varianten):", deleteVariantsError);
       throw new Error(`Datenbankfehler beim Löschen der Varianten: ${deleteVariantsError.message}`);
     }
-    console.log(`Varianten für Paket ${packageId} gelöscht.`);
 
     // 5. Paket aus prompt_packages löschen
-    console.log(`Lösche Paket ${packageId}...`);
     const { error: deletePackageError } = await supabaseAdmin
       .from('prompt_packages')
       .delete()
       .eq('id', packageId);
 
     if (deletePackageError) {
-      console.error("DB Delete Fehler (Paket):", deletePackageError);
-      // Fehler werfen
+      console.error("[deletePromptPackage] DB Delete Fehler (Paket):", deletePackageError);
       throw new Error(`Datenbankfehler beim Löschen des Pakets: ${deletePackageError.message}`);
     }
 
-    // 6. Cache für die Admin-Seite neu validieren (bleibt gleich)
+    // 6. Cache für die Admin-Seite neu validieren
     revalidatePath('/admin/prompts');
 
-    // 7. Erfolgsmeldung zurückgeben (bleibt gleich)
-    console.log(`Paket ${packageId} erfolgreich gelöscht.`);
+    // 7. Erfolgsmeldung zurückgeben
     return { success: true, message: 'Prompt-Paket erfolgreich gelöscht!' };
 
   } catch (error) {
       // Fehlerbehandlung für den gesamten Löschprozess
-      console.error("Fehler beim Löschen des Pakets/Varianten:", error.message);
+      console.error("[deletePromptPackage] CATCH BLOCK - Fehler beim Löschen des Pakets/Varianten:", error.message);
       return { success: false, message: `Fehler: ${error.message}` };
   }
 }
 
 
 // --- getAdminPageData (bleibt unverändert) ---
-// Lädt nur die Liste der Pakete, keine Variantendetails
 export async function getAdminPageData() {
   'use server';
   const supabaseUserClient = createServerComponentClient();
 
-  // 1. User holen und Admin-Status prüfen (bleibt gleich)
+  // 1. User holen und Admin-Status prüfen
   const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser();
-  if (userError) { /* ... Fehlerbehandlung ... */ return { success: false, error: 'Authentifizierungsfehler.', user: null, prompts: [] }; }
-  if (!user) { /* ... Fehlerbehandlung ... */ return { success: false, error: 'Nicht eingeloggt.', user: null, prompts: [] }; }
+  if (userError) { console.error("[getAdminPageData] Auth error:", userError); return { success: false, error: 'Authentifizierungsfehler.', user: null, prompts: [] }; }
+  if (!user) { return { success: false, error: 'Nicht eingeloggt.', user: null, prompts: [] }; }
   const isAdmin = user.email === process.env.ADMIN_EMAIL;
-  if (!isAdmin) { /* ... Fehlerbehandlung ... */ return { success: false, error: 'Nicht autorisiert.', user: user, prompts: [] }; }
+  if (!isAdmin) { console.warn(`[getAdminPageData] Unauthorized access attempt by ${user.email}`); return { success: false, error: 'Nicht autorisiert.', user: user, prompts: [] }; }
 
-  console.log(`Admin ${user.email} lädt Daten für /admin/prompts.`);
-
-  // 2. Prompts laden (bleibt gleich, da nur Paket-Metadaten benötigt)
+  // 2. Prompts laden
   const supabaseAdmin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
   const { data: prompts, error: promptsError } = await supabaseAdmin
     .from('prompt_packages')
-    .select('id, slug, name, category') // Keine Änderung hier nötig
+    .select('id, slug, name, category')
     .order('category', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true });
 
-  if (promptsError) { /* ... Fehlerbehandlung ... */ return { success: false, error: `Fehler beim Laden der Prompts: ${promptsError.message}`, user: user, prompts: [] }; }
+  if (promptsError) { console.error("[getAdminPageData] Error loading prompts:", promptsError); return { success: false, error: `Fehler beim Laden der Prompts: ${promptsError.message}`, user: user, prompts: [] }; }
 
-  // 3. Erfolgreich: User und Prompts zurückgeben (bleibt gleich)
+  // 3. Erfolgreich: User und Prompts zurückgeben
   return { success: true, user: user, prompts: prompts || [], error: null };
 }
 
 // --- NEU: Funktion zum Laden der Daten für die Edit-Seite ---
-// Diese Funktion wird von der Edit-Seite ([packageId]/page.js) aufgerufen
 export async function getEditPageData(packageId) {
     'use server';
     const supabaseUserClient = createServerComponentClient();
 
-    // 1. Admin-Prüfung (wie oben)
+    // 1. Admin-Prüfung
     const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser();
-    if (userError || !user || user.email !== process.env.ADMIN_EMAIL) {
-        return { success: false, error: 'Nicht autorisiert oder Fehler.', promptPackage: null, variants: [] };
-    }
+    if (userError) { console.error(`[getEditPageData] Auth error for package ${packageId}:`, userError); return { success: false, error: 'Authentifizierungsfehler.', promptPackage: null, variants: [] }; }
+    if (!user) { return { success: false, error: 'Nicht eingeloggt.', promptPackage: null, variants: [] }; }
+    if (user.email !== process.env.ADMIN_EMAIL) { console.warn(`[getEditPageData] Unauthorized access attempt by ${user.email} for package ${packageId}`); return { success: false, error: 'Nicht autorisiert.', promptPackage: null, variants: [] }; }
 
-    console.log(`Admin ${user.email} lädt Daten für Edit-Seite (Paket-ID: ${packageId}).`);
+    if (!packageId) {
+        console.error("[getEditPageData] No packageId provided.");
+        return { success: false, error: 'Keine Paket-ID angegeben.', promptPackage: null, variants: [] };
+    }
 
     const supabaseAdmin = createAdminClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -410,29 +386,30 @@ export async function getEditPageData(packageId) {
     // 2. Paket-Metadaten laden
     const { data: promptPackage, error: packageError } = await supabaseAdmin
         .from('prompt_packages')
-        .select('id, name, slug, description, category') // Keine Varianten hier
+        .select('id, name, slug, description, category')
         .eq('id', packageId)
         .single();
 
     if (packageError || !promptPackage) {
-        console.error(`Fehler beim Laden des Pakets ${packageId} für Edit:`, packageError);
-        return { success: false, error: 'Paket nicht gefunden oder Fehler.', promptPackage: null, variants: [] };
+        console.error(`[getEditPageData] Fehler beim Laden des Pakets ${packageId} für Edit:`, packageError);
+        const errorMsg = packageError?.code === 'PGRST116' ? 'Paket nicht gefunden.' : `Fehler beim Laden des Pakets: ${packageError?.message || 'Unbekannt'}`;
+        return { success: false, error: errorMsg, promptPackage: null, variants: [] };
     }
 
     // 3. Zugehörige Varianten laden
     const { data: variants, error: variantsError } = await supabaseAdmin
         .from('prompt_variants')
-        .select('variant_id, title, description, context, semantic_data, writing_instructions') // DB 'id' (UUID) nicht nötig für JSON
+        .select('variant_id, title, description, context, semantic_data, writing_instructions')
         .eq('package_id', packageId)
         .order('title', { ascending: true }); // Optional sortieren
 
     if (variantsError) {
-        console.error(`Fehler beim Laden der Varianten für Paket ${packageId} (Edit):`, variantsError);
+        console.error(`[getEditPageData] Fehler beim Laden der Varianten für Paket ${packageId} (Edit):`, variantsError);
         // Paket trotzdem zurückgeben, aber mit Fehlerhinweis/leeren Varianten
         return { success: false, error: `Fehler beim Laden der Varianten: ${variantsError.message}`, promptPackage: promptPackage, variants: [] };
     }
 
-    // 4. Varianten für das JSON-Feld vorbereiten (String 'variant_id' wird zu 'id')
+    // 4. Varianten für das JSON-Feld vorbereiten
     const variantsForJson = (variants || []).map(v => ({
         id: v.variant_id, // String ID mappen
         title: v.title,
@@ -446,7 +423,7 @@ export async function getEditPageData(packageId) {
     return { success: true, promptPackage: promptPackage, variants: variantsForJson, error: null };
 }
 
-// --- logout Funktion (kann hier bleiben oder in eine separate auth-actions.js) ---
+// --- logout Funktion ---
 export async function logout() {
     'use server';
     const supabase = createServerComponentClient();
