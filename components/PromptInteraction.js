@@ -563,7 +563,6 @@ export default function PromptInteraction({ variants, slug }) {
           {/* --- KORREKTUR: Klasse hier im Card-Tag --- */}
           <Card className="border-input">
             <CardHeader>
-              <CardTitle className="text-center">{currentVariant?.title || 'Deine Eingaben'}</CardTitle>
               {currentVariant?.description && (
                 <CardDescription className="text-center">{currentVariant.description}</CardDescription>
               )}
@@ -574,8 +573,8 @@ export default function PromptInteraction({ variants, slug }) {
               {/* Dynamische Felder (Erforderlich) */}
               {Object.keys(semanticDataInfo).length > 0 ? (
                   <div>
-                      <h3 className="text-base font-semibold mb-3">Erforderliche Angaben:</h3>
-                      <div className="grid grid-cols-1 gap-4">
+                      <h3 className="text-base font-semibold mb-3">Damit dein Text wirkt …</h3>
+                      <div className="grid grid-cols-1 gap-4 mt-6">
                           {renderSemanticFields(semanticDataInfo, false)}
                       </div>
                       {Object.values(semanticDataInfo).every(item => item?.optional === true) && !hasOptionalFields && (
