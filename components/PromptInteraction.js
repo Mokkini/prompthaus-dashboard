@@ -528,7 +528,7 @@ export default function PromptInteraction({ variants, slug }) {
       {/* Variantenauswahl */}
       {generationVariants.length > 1 && (
         <div>
-          <h2 className="text-lg font-semibold mb-4 text-center md:text-left">Variante auswählen:</h2>
+          
           <div className="flex flex-wrap gap-3 justify-center px-2"> {/* <--- Padding hier */}
             {generationVariants.map((variant) => (
               <button
@@ -563,9 +563,9 @@ export default function PromptInteraction({ variants, slug }) {
           {/* --- KORREKTUR: Klasse hier im Card-Tag --- */}
           <Card className="border-input">
             <CardHeader>
-              <CardTitle>{currentVariant?.title || 'Deine Eingaben'}</CardTitle>
+              <CardTitle className="text-center">{currentVariant?.title || 'Deine Eingaben'}</CardTitle>
               {currentVariant?.description && (
-                <CardDescription>{currentVariant.description}</CardDescription>
+                <CardDescription className="text-center">{currentVariant.description}</CardDescription>
               )}
             </CardHeader>
             <CardContent className="space-y-6">

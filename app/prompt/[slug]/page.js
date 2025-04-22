@@ -90,9 +90,9 @@ export default async function PromptDetailPage({ params }) {
 
       <Card className="rounded-none sm:rounded-lg border-x-0 sm:border-x">
         <CardHeader className="px-4 sm:px-6">
-          <CardTitle className="text-2xl">{name}</CardTitle>
+          <CardTitle className="text-2xl text-center">{name}</CardTitle>
           {description && (
-             <CardDescription>{description}</CardDescription>
+             <CardDescription className="text-center">{description}</CardDescription>
           )}
         </CardHeader>
         <CardContent className="pt-0 sm:pt-2 md:pt-4 px-0 sm:px-6">
