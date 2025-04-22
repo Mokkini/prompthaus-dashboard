@@ -1,5 +1,4 @@
 // components/store/ProductCard.js
-
 import Link from 'next/link';
 import {
   Card,
@@ -10,9 +9,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Zap, Check } from 'lucide-react'; // Check-Icon für die Liste
+import { Zap, Check } from 'lucide-react';
 
-// Preisformatierung bleibt unverändert
 function formatPrice(amount) {
   if (typeof amount !== 'number' || isNaN(amount)) {
     if (amount === 0) return 'Kostenlos';
@@ -24,26 +22,25 @@ function formatPrice(amount) {
   }).format(amount);
 }
 
-// Komponente ProductCard
 export function ProductCard({ prompt }) {
-
   if (!prompt) {
     return null;
   }
 
-  const { id, name, description, price, image_url, prompt_variants, slug } = prompt;
-
-  // --- Varianten-Logik VEREINFACHT ---
-  // Wir holen alle Varianten, keine Begrenzung mehr
+  const { id, name, description, price, image_url, prompt_variants, slug, tags, category } = prompt;
   const variants = Array.isArray(prompt_variants) ? prompt_variants : [];
-  // MAX_VISIBLE_VARIANTS, visibleVariants, hiddenVariantsCount entfernt
-  // --- Ende Varianten-Logik ---
-
   const checkoutUrl = slug ? `/checkout/${slug}` : (id ? `/checkout/${id}` : null);
   const displayPrice = formatPrice(price);
 
   return (
-    <Card className="group flex flex-col h-full transition-transform duration-300 hover:-translate-y-1 hover:shadow-lg border rounded-lg overflow-hidden bg-card">
+    <Card className="group flex flex-col h-full transition-transform duration-300 hover:-translate-y-1 hover:shadow-xl hover:ring-1 hover:ring-primary/30 border rounded-lg overflow-hidden bg-card relative">
+
+      {/* Beliebt-Badge */}
+      {tags?.includes('beliebt') && (
+        <div className="absolute top-2 right-2 bg-yellow-400 text-black text-xs px-2 py-1 rounded font-medium shadow-sm z-10">
+          Beliebt
+        </div>
+      )}
 
       {image_url && (
         <div className="relative w-full h-40 md:h-48 overflow-hidden">
@@ -56,6 +53,11 @@ export function ProductCard({ prompt }) {
       )}
 
       <CardHeader className="pt-4 pb-2">
+        {category && (
+          <p className="text-xs uppercase tracking-wider text-primary/60 mb-1 font-medium">
+            {category}
+          </p>
+        )}
         <CardTitle className="text-lg font-semibold transition-colors group-hover:text-primary">
           {name || 'Unbenanntes Paket'}
         </CardTitle>
@@ -66,37 +68,31 @@ export function ProductCard({ prompt }) {
 
       <CardContent className="flex-grow pt-2 pb-4 flex flex-col">
 
-        {/* --- ANGEPASST: Anzeige ALLER Varianten als Bullet-Point-Liste --- */}
         {variants.length > 0 && (
-          <div className="mb-4 mt-2">
-            <ul className="space-y-1.5 text-sm text-muted-foreground">
-              {/* Zeige ALLE Varianten als Listeneinträge */}
-              {variants.map((variant, index) => ( // Iteriere direkt über 'variants'
+          <div className="mb-4 mt-2 bg-muted/30 rounded-md p-3">
+            <p className="text-sm font-medium mb-2 text-muted-foreground">
+              Dieses Paket enthält folgende anpassbare Textvorlagen:
+            </p>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              {variants.map((variant, index) => (
                 <li key={index} className="flex items-start">
                   <Check className="h-4 w-4 mr-2 mt-0.5 text-primary flex-shrink-0" />
-                  <span title={variant.title || 'Variante'}>
-                    {variant.title || 'Variante'}
-                  </span>
+                  <span>{variant.title || 'Variante'}</span>
                 </li>
               ))}
-              {/* Der "+X mehr"-Listeneintrag wurde entfernt */}
             </ul>
           </div>
         )}
-        {/* --- ENDE Varianten --- */}
 
-        {/* Preis (bleibt erhalten, wird durch mt-auto nach unten geschoben) */}
         {displayPrice && (
           <p className="text-xl font-bold text-primary mt-auto pt-4">
             {displayPrice}
           </p>
         )}
-        {/* Fallback, damit Liste oben bleibt, wenn kein Preis da ist */}
         {!displayPrice && variants.length > 0 && <div className="mt-auto"></div>}
 
       </CardContent>
 
-      {/* CardFooter mit dem Link-Button (bleibt gleich) */}
       <CardFooter className="pt-0 pb-4">
         {checkoutUrl ? (
           <Button asChild className="w-full">
@@ -112,4 +108,4 @@ export function ProductCard({ prompt }) {
       </CardFooter>
     </Card>
   );
-}
+} 

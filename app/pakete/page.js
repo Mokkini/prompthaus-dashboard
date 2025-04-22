@@ -4,10 +4,10 @@
 import { createClient } from '@/lib/supabase/server';
 import Navigation from '@/components/Navigation';
 // Korrekter Named Import für ProductCard
-import { ProductCard } from '@/components/store/ProductCard';
+import { ProductCard } from '@/components/store/ProductCard'; // Pfad prüfen!
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
-// Icons: ListFilter für Kategorie-Dropdown hinzugefügt, andere ggf. nicht mehr nötig
+// Icons
 import { XCircle, LayoutGrid, ArrowLeft, ArrowDownUp, Check, ListFilter } from 'lucide-react';
 import RevealOnScroll from '@/components/ui/RevealOnScroll';
 // Shadcn UI Komponenten für Dropdown
@@ -82,14 +82,30 @@ export default async function PaketePage({ searchParams }) {
     ? [...new Set(categoriesData.map(item => item.category).filter(Boolean))]
     : [];
 
-  // --- Angepasste Supabase-Abfrage mit Sortierung (bleibt unverändert) ---
+  // --- Angepasste Supabase-Abfrage mit Varianten ---
+  console.log(`Lade Pakete mit Sortierung: ${selectedSortOption.column} ${selectedSortOption.ascending ? 'ASC' : 'DESC'}`);
   const { data: allPromptPackages, error: packagesError } = await supabase
     .from('prompt_packages')
-    .select('*')
-    .order(selectedSortOption.column, { ascending: selectedSortOption.ascending });
+    // Wähle alle Paket-Spalten (*) UND von den verknüpften Varianten nur Titel und ID
+    .select(`
+      *,
+      prompt_variants (
+        variant_id,
+        title
+      )
+    `)
+    // Optional: Limitieren, falls es sehr viele Varianten pro Paket gibt
+    // .select(`*, prompt_variants!inner(variant_id, title, limit: 5)`)
+    .order(selectedSortOption.column, { ascending: selectedSortOption.ascending }); // Sortierung der Pakete
 
   if (packagesError) {
-    console.error('Fehler beim Laden der Textpakete für Paketseite:', packagesError.message);
+    console.error('Fehler beim Laden der Textpakete inkl. Varianten:', packagesError.message);
+  } else {
+    console.log(`Erfolgreich ${allPromptPackages?.length || 0} Pakete geladen.`);
+    // Optional: Logge die Struktur des ersten Pakets, um die Varianten zu sehen
+    // if (allPromptPackages && allPromptPackages.length > 0) {
+    //   console.log("Struktur erstes Paket:", JSON.stringify(allPromptPackages[0], null, 2));
+    // }
   }
 
   // --- Filterung nach Kategorie (bleibt unverändert) ---
@@ -171,14 +187,10 @@ export default async function PaketePage({ searchParams }) {
             </DropdownMenu>
             {/* --- ENDE Sortier-Dropdown --- */}
 
-            {/* --- ENTFERNT: Alte Kategorie-Buttons --- */}
-            {/* Die Buttons "Alle Pakete anzeigen", "Zurück zu allen Kategorien" etc. wurden entfernt,
-                da die Funktionalität jetzt im Kategorie-Dropdown enthalten ist. */}
-
           </div>
 
-          {/* Fehlerbehandlung und Anzeige der Pakete (bleibt unverändert) */}
-          {packagesError || categoriesError ? ( // Fehlerprüfung für Kategorien hinzugefügt
+          {/* Fehlerbehandlung und Anzeige der Pakete */}
+          {packagesError || categoriesError ? (
             <p className="text-center text-red-500">
               Ups! Es gab ein Problem beim Laden der Inhalte. Bitte versuche es später erneut.
             </p>
@@ -192,6 +204,7 @@ export default async function PaketePage({ searchParams }) {
             <RevealOnScroll>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {filteredPromptPackages.map((promptPackage) => (
+                  // Hier wird das Paket inkl. der geladenen Varianten übergeben
                   <ProductCard key={promptPackage.id} prompt={promptPackage} />
                 ))}
               </div>

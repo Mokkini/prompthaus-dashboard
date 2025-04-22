@@ -1,4 +1,4 @@
-// components/PromptInteraction.js - Angepasst für variantId (String) und verschobenen Tonalitäts-Input
+// components/PromptInteraction.js - Angepasst für variantId (String) statt variantIndex (Number)
 
 "use client";
 
@@ -58,15 +58,21 @@ const setNestedValue = (obj, path, value) => {
 };
 
 export default function PromptInteraction({ variants, slug }) {
+  // --- ANPASSUNG: variants ist jetzt das Array von Variant-Objekten aus der DB ---
+  // Jedes Objekt sollte { id (string), title, description, context, semantic_data, writing_instructions } enthalten
+  // WICHTIG: Die Page-Komponente mappt die 'variant_id' aus der DB auf 'id' für das Frontend.
   const generationVariants = Array.isArray(variants) ? variants : [];
 
   console.log("PromptInteraction erhaltene Prop 'variants':", variants);
   console.log("Verwendetes Array 'generationVariants':", generationVariants);
 
+  // --- NEU: State für die ausgewählte Varianten-ID (String) ---
   const [selectedVariantId, setSelectedVariantId] = useState(
-    generationVariants.length > 0 ? generationVariants[0].id : null
+    generationVariants.length > 0 ? generationVariants[0].id : null // Initial die ID der ersten Variante
   );
+  // --- Entfernt: selectedVariantIndex ---
 
+  // Bestehende State Hooks (bleiben größtenteils gleich)
   const [semanticDataInfo, setSemanticDataInfo] = useState({});
   const [placeholderValues, setPlaceholderValues] = useState({});
   const [selectedTone, setSelectedTone] = useState('');
@@ -80,7 +86,7 @@ export default function PromptInteraction({ variants, slug }) {
   const [isRefining, setIsRefining] = useState(false);
   const [filteredTones, setFilteredTones] = useState([]);
   const [showToneSuggestions, setShowToneSuggestions] = useState(false);
-  const toneInputRef = useRef(null); // Ref bleibt, wird im Output-Footer verwendet
+  const toneInputRef = useRef(null);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState('');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
@@ -88,20 +94,28 @@ export default function PromptInteraction({ variants, slug }) {
   const [sendEmailSuccess, setSendEmailSuccess] = useState(false);
   const [accordionValue, setAccordionValue] = useState("");
 
+  // --- NEU: Aktuell ausgewählte Variante über die ID finden ---
+  // Diese Variable wird für die Render-Logik und API-Calls verwendet
   const currentVariant = generationVariants.find(v => v.id === selectedVariantId);
 
   console.log("Aktuell ausgewählte variantId:", selectedVariantId);
   console.log("Aktuell ausgewählte Variante (Objekt):", currentVariant);
 
+
+  // --- useEffect zum Initialisieren beim Variantenwechsel (ANGEPASST auf selectedVariantId) ---
   useEffect(() => {
+    // Finde die Variante basierend auf der aktuellen ID *innerhalb* des Effekts
     const calculatedCurrentVariant = (Array.isArray(variants) ? variants : []).find(v => v.id === selectedVariantId);
+
     console.log(`useEffect triggered. selectedVariantId: ${selectedVariantId}. Variants prop reference check.`);
 
+    // Prüfe die *innerhalb* des Effekts gefundene Variante
     if (calculatedCurrentVariant?.semantic_data) {
       const semanticData = calculatedCurrentVariant.semantic_data;
       let initialValues = {};
-      let dataInfo = {};
+      let dataInfo = {}; // Struktur für die UI
 
+      // --- processSemanticData Funktion bleibt gleich ---
       const processSemanticData = (data, path = [], infoTarget = dataInfo) => {
          for (const key in data) {
            const item = data[key];
@@ -125,14 +139,15 @@ export default function PromptInteraction({ variants, slug }) {
       };
 
       processSemanticData(semanticData);
-      setSemanticDataInfo(dataInfo);
-      setPlaceholderValues(initialValues);
-      setAccordionValue("");
+      setSemanticDataInfo(dataInfo); // <-- State Update
+      setPlaceholderValues(initialValues); // <-- State Update
+      setAccordionValue(""); // <-- State Update, Accordion schließen
 
       console.log("Semantic Data verarbeitet für Variante:", selectedVariantId, { dataInfo, initialValues });
 
+      // Reset anderer States (bleibt gleich)
       setGeneratedText('');
-      setSelectedTone(''); // Tonalität auch zurücksetzen beim Variantenwechsel
+      setSelectedTone('');
       setErrorMsg('');
       setIsCopied(false);
       setShowRefineInput(false);
@@ -144,12 +159,14 @@ export default function PromptInteraction({ variants, slug }) {
       setSendEmailSuccess(false);
 
     } else {
+      // Fallback, wenn keine Variante oder keine semantic_data
       console.warn("Keine gültige Variante oder semantic_data für ID gefunden:", selectedVariantId);
-      setSemanticDataInfo({});
-      setPlaceholderValues({});
-      setAccordionValue("");
+      setSemanticDataInfo({}); // <-- State Update
+      setPlaceholderValues({}); // <-- State Update
+      setAccordionValue(""); // <-- State Update
+      // Reset anderer States (bleibt gleich)
       setGeneratedText('');
-      setSelectedTone(''); // Tonalität auch zurücksetzen
+      setSelectedTone('');
       setErrorMsg('');
       setIsCopied(false);
       setShowRefineInput(false);
@@ -160,14 +177,18 @@ export default function PromptInteraction({ variants, slug }) {
       setSendEmailError('');
       setSendEmailSuccess(false);
     }
-  }, [selectedVariantId, variants]);
+    // --- KORRIGIERTES Dependency Array ---
+  }, [selectedVariantId, variants]); // <--- Abhängig von ID und variants Array
+  // --- ENDE useEffect ---
 
+  // useEffect für Web Share API (bleibt gleich)
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.share) {
       setCanShare(true);
     }
   }, []);
 
+  // useEffect für Tonalitäts-Vorschläge (bleibt gleich)
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (toneInputRef.current && !toneInputRef.current.contains(event.target)) {
@@ -180,6 +201,7 @@ export default function PromptInteraction({ variants, slug }) {
     };
   }, []);
 
+  // --- handleInputChange (bleibt gleich) ---
   const handleInputChange = (stateKey, value) => {
     setPlaceholderValues(prev => {
       const newState = JSON.parse(JSON.stringify(prev));
@@ -188,6 +210,7 @@ export default function PromptInteraction({ variants, slug }) {
     });
   };
 
+  // Tonalitäts-Handler (bleiben gleich)
   const handleToneInputChange = (e) => {
     const value = e.target.value;
     setSelectedTone(value);
@@ -200,13 +223,13 @@ export default function PromptInteraction({ variants, slug }) {
       setShowToneSuggestions(false);
     }
   };
-
   const handleToneSuggestionClick = (tone) => {
     setSelectedTone(tone);
     setFilteredTones([]);
     setShowToneSuggestions(false);
   };
 
+  // Kopieren & Teilen Handler (bleiben gleich)
   const handleCopy = () => {
     if (!generatedText) return;
     navigator.clipboard.writeText(generatedText).then(() => {
@@ -234,6 +257,7 @@ export default function PromptInteraction({ variants, slug }) {
     }
   };
 
+  // Zentrale Funktion für API-Aufrufe (bleibt gleich)
   const callGenerateApi = async (payload, setLoadingState = setLoading) => {
     setIsCopied(false);
     setLoadingState(true);
@@ -244,7 +268,7 @@ export default function PromptInteraction({ variants, slug }) {
     }
 
     try {
-      console.log("Sende Payload an /api/generate:", payload);
+      console.log("Sende Payload an /api/generate:", payload); // Log Payload
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -253,7 +277,7 @@ export default function PromptInteraction({ variants, slug }) {
 
       if (!res.ok) {
         let errorData = await res.json().catch(() => ({}));
-        console.error("API Fehler Response:", errorData);
+        console.error("API Fehler Response:", errorData); // Log API Fehler
         throw new Error(errorData.error || `HTTP Fehler ${res.status}`);
       }
 
@@ -268,7 +292,7 @@ export default function PromptInteraction({ variants, slug }) {
           setAdditionalInfo('');
       }
     } catch (error) {
-      console.error("Fehler in callGenerateApi:", error);
+      console.error("Fehler in callGenerateApi:", error); // Log Catch-Fehler
       setErrorMsg(`Aktion fehlgeschlagen: ${error.message}`);
       setGeneratedText('');
     } finally {
@@ -276,7 +300,9 @@ export default function PromptInteraction({ variants, slug }) {
     }
   };
 
+  // --- Handler für initiale Generierung (ANGEPASST für Validierung & Payload) ---
   const handleInitialGenerate = () => {
+    // --- Validierungslogik (validateFields) bleibt gleich ---
     let missing = [];
     const validateFields = (data, currentPath = []) => {
       if (!data || typeof data !== 'object') return;
@@ -320,56 +346,61 @@ export default function PromptInteraction({ variants, slug }) {
     }
 
     setErrorMsg('');
-    // --- Payload OHNE Tonalität ---
+    // --- Payload angepasst: sendet variantId statt variantIndex ---
     const payload = {
       action: 'generate',
       promptPackageSlug: slug,
-      variantId: selectedVariantId,
+      variantId: selectedVariantId, // <-- HIER DIE ÄNDERUNG
       placeholders: placeholderValues,
-      // tone wird hier NICHT mehr gesendet
+      ...(selectedTone.trim() && { tone: selectedTone.trim() })
     };
     callGenerateApi(payload, setLoading);
   };
+  // --- ENDE handleInitialGenerate ---
 
+  // --- Handler für "Neu formulieren" (ANGEPASST für Payload) ---
   const handleRephrase = () => {
-    if (!currentVariant) return;
+    if (!currentVariant) return; // Sicherheitshalber
     setErrorMsg('');
-    // --- Payload MIT Tonalität (aus dem Output-Footer) ---
+    // --- Payload angepasst: sendet variantId statt variantIndex ---
     const payload = {
       action: 'rephrase',
       promptPackageSlug: slug,
-      variantId: selectedVariantId,
-      placeholders: placeholderValues,
-      ...(selectedTone.trim() && { tone: selectedTone.trim() }) // User-Ton wird hier mitgesendet
+      variantId: selectedVariantId, // <-- HIER DIE ÄNDERUNG
+      placeholders: placeholderValues, // Aktuelle Eingaben verwenden
+      ...(selectedTone.trim() && { tone: selectedTone.trim() })
     };
-    callGenerateApi(payload, setIsRefining);
+    callGenerateApi(payload, setIsRefining); // Nutzt Refine-Ladeindikator
   };
 
+  // Handler für "Zusatzinfos angeben" (bleibt gleich)
   const handleToggleRefineInput = () => {
     setShowRefineInput(!showRefineInput);
     setAdditionalInfo('');
     setErrorMsg('');
   };
 
+  // --- Handler für "Verfeinern" (ANGEPASST für Payload) ---
   const handleRefine = () => {
     if (!generatedText || !additionalInfo.trim()) {
       setErrorMsg("Bitte gib Zusatzinformationen für die Verfeinerung ein.");
       return;
     }
     setErrorMsg('');
-    // --- Payload MIT Tonalität (aus dem Output-Footer) ---
+    // --- Payload angepasst: sendet variantId statt variantIndex ---
     const payload = {
       action: 'refine',
       originalText: generatedText,
       additionalInfo: additionalInfo.trim(),
-      promptPackageSlug: slug,
-      variantId: selectedVariantId,
-      placeholders: placeholderValues,
-      ...(selectedTone.trim() && { tone: selectedTone.trim() }) // User-Ton wird hier mitgesendet
+      promptPackageSlug: slug, // Für Kontext/Tone im Backend
+      variantId: selectedVariantId, // <-- HIER DIE ÄNDERUNG (optional, aber nützlich für Backend-Kontext)
+      placeholders: placeholderValues, // Für Kontext/Tone im Backend
+      ...(selectedTone.trim() && { tone: selectedTone.trim() }) // User-Tone auch für Refine
     };
-    callGenerateApi(payload, setIsRefining);
+    callGenerateApi(payload, setIsRefining); // Separater Ladeindikator
   };
 
+  // Handler für E-Mail Versand (bleibt gleich)
   const handleSendEmail = async () => {
     if (!recipientEmail || !recipientEmail.includes('@')) {
       setSendEmailError('Bitte gib eine gültige E-Mail-Adresse ein.');
@@ -397,6 +428,12 @@ export default function PromptInteraction({ variants, slug }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP Fehler ${res.status}`);
       setSendEmailSuccess(true);
+      // Optional: Felder leeren und Dialog schließen
+      // setRecipientEmail('');
+      // setTimeout(() => {
+      //   setShowEmailDialog(false);
+      //   setSendEmailSuccess(false);
+      // }, 2000);
     } catch (error) {
       setSendEmailError(`Fehler: ${error.message}`);
     } finally {
@@ -404,6 +441,8 @@ export default function PromptInteraction({ variants, slug }) {
     }
   };
 
+
+  // --- Funktion zum Rendern der dynamischen Felder (renderSemanticFields) bleibt gleich ---
   const renderSemanticFields = (data, isOptionalSection = false) => {
      if (!data || typeof data !== 'object') return [];
      return Object.entries(data)
@@ -518,32 +557,40 @@ export default function PromptInteraction({ variants, slug }) {
         }
       });
   };
+  // --- ENDE renderSemanticFields ---
 
+  // --- Prüfen, ob es optionale Felder gibt (bleibt gleich) ---
   const hasOptionalFields = Object.values(semanticDataInfo).some(item => item?.optional === true);
+
 
   // JSX Rendering
   return (
-    <div className="w-full space-y-8">
+    <div className="w-full space-y-8"> {/* Hauptcontainer */}
 
-      {/* Variantenauswahl */}
+      {/* --- Variantenauswahl als Karten (ANGEPASST für variant.id) --- */}
       {generationVariants.length > 1 && (
         <div>
           <h2 className="text-lg font-semibold mb-4 text-center md:text-left">Variante auswählen:</h2>
           <div className="flex flex-wrap gap-3 justify-center">
-            {generationVariants.map((variant) => (
+            {generationVariants.map((variant) => ( // Iteriere über die Varianten-Objekte
               <button
-                key={variant.id}
-                onClick={() => setSelectedVariantId(variant.id)}
-                disabled={loading || isRefining}
+                key={variant.id} // <-- Nutze die eindeutige String-ID als Key
+                onClick={() => setSelectedVariantId(variant.id)} // <-- Setze die ID beim Klick
+                disabled={loading || isRefining} // Deaktivieren während Ladevorgängen
                 className={cn(
+                  // Styling für die Größe und das Layout der "Karten"
                   "w-full sm:w-[calc(50%-0.375rem)] md:w-[calc(33.33%-0.5rem)] lg:w-[calc(25%-0.5625rem)] xl:w-[calc(20%-0.6rem)]",
+                  // Basis-Styling (Rahmen, Rundung, Hover-Effekt) -> Karten-Look
                   "p-4 border rounded-lg text-left transition-all duration-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-                  variant.id === selectedVariantId
+                  // Bedingtes Styling für die ausgewählte "Karte"
+                  variant.id === selectedVariantId // <-- Prüfe auf ID-Gleichheit
                     ? "bg-primary/10 border-primary ring-2 ring-primary ring-offset-2 dark:bg-primary/20"
                     : "bg-card border-border hover:border-muted-foreground/50",
+                  // Styling für deaktivierten Zustand
                   (loading || isRefining) && "opacity-50 cursor-not-allowed"
                 )}
               >
+                {/* Inhalt der "Karte" (bleibt gleich) */}
                 <p className="font-medium text-sm">{variant.title || `Variante ${variant.id}`}</p>
                 {variant.description && (
                   <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
@@ -555,28 +602,67 @@ export default function PromptInteraction({ variants, slug }) {
           </div>
         </div>
       )}
+      {/* --- ENDE Variantenauswahl --- */}
 
-      {/* Haupt-Grid */}
-      {currentVariant ? (
+      {/* Haupt-Grid für Eingabe/Ausgabe */}
+      {currentVariant ? ( // Stelle sicher, dass eine Variante ausgewählt ist (über ID gefunden)
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
           {/* Linke Spalte: Eingabe */}
           <Card>
             <CardHeader>
+              {/* Titel und Beschreibung der aktuellen Variante (bleibt gleich) */}
               <CardTitle>{currentVariant?.title || 'Deine Eingaben'}</CardTitle>
               {currentVariant?.description && (
                 <CardDescription>{currentVariant.description}</CardDescription>
               )}
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* --- Tonalität Input ENTFERNT --- */}
+              {/* Tonalität (Input ID angepasst, um Eindeutigkeit zu wahren) */}
+              <div className="space-y-1.5 relative" ref={toneInputRef}>
+                <Label htmlFor={`tone-${selectedVariantId}`}>Gewünschte Tonalität (optional):</Label>
+                <Input
+                  id={`tone-${selectedVariantId}`} // <-- Nutze ID statt Index
+                  value={selectedTone}
+                  onChange={handleToneInputChange}
+                  onFocus={() => {
+                    if (selectedTone.trim().length > 0 && filteredTones.length > 0) {
+                       setShowToneSuggestions(true);
+                    }
+                  }}
+                  placeholder="z.B. sachlich, förmlich, kreativ,..."
+                  autoComplete="off"
+                  disabled={loading || isRefining}
+                />
+                {/* Vorschlagsliste (bleibt gleich) */}
+                {showToneSuggestions && filteredTones.length > 0 && (
+                  <Card className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
+                    <CardContent className="p-2">
+                      {filteredTones.map((tone) => (
+                        <button
+                          key={tone}
+                          type="button"
+                          onMouseDown={(e) => { e.preventDefault(); handleToneSuggestionClick(tone); }}
+                          className="block w-full text-left px-3 py-1.5 text-sm rounded-md hover:bg-accent"
+                        >
+                          {tone}
+                        </button>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Tippe, um Vorschläge zu sehen, oder beschreibe den gewünschten Tonfall.
+                </p>
+              </div>
 
-              {/* Dynamische Felder (Erforderlich) */}
+              {/* Dynamische Felder (Erforderlich) - renderSemanticFields wird aufgerufen (bleibt gleich) */}
               {Object.keys(semanticDataInfo).length > 0 ? (
                   <div>
                       <h3 className="text-base font-semibold mb-3">Erforderliche Angaben:</h3>
                       <div className="grid grid-cols-1 gap-4">
                           {renderSemanticFields(semanticDataInfo, false)}
                       </div>
+                      {/* Nachrichten für optionale/keine Felder bleiben gleich */}
                       {Object.values(semanticDataInfo).every(item => item?.optional === true) && !hasOptionalFields && (
                           <p className="text-sm text-muted-foreground mt-4">
                           <em>Für diese Variante sind keine spezifischen Angaben erforderlich.</em>
@@ -593,7 +679,7 @@ export default function PromptInteraction({ variants, slug }) {
                    <p className="text-sm text-muted-foreground">Keine Eingabefelder für diese Variante definiert.</p>
               )}
 
-              {/* Optionaler Bereich mit Accordion */}
+              {/* Optionaler Bereich mit Accordion (bleibt gleich) */}
               {hasOptionalFields && (
                 <Accordion
                   type="single"
@@ -603,14 +689,9 @@ export default function PromptInteraction({ variants, slug }) {
                   className="w-full pt-4 border-t"
                 >
                   <AccordionItem value="optional-fields" className="border-b-0">
-                  <AccordionTrigger className={cn(
-    "text-base font-semibold hover:no-underline", // Bisherige Klassen
-    // --- Diese Klassen machen den Trigger auffälliger ---
-    "p-4 rounded-md bg-muted/60 hover:bg-muted/80 transition-colors w-full flex justify-between items-center"
-    // --- Ende neue Klassen ---
-)}>
-  Optionale Angaben (aufklappen)
-</AccordionTrigger>
+                    <AccordionTrigger className="text-base font-semibold hover:no-underline">
+                      Optionale Angaben (aufklappen)
+                    </AccordionTrigger>
                     <AccordionContent className="pt-4 space-y-4">
                       {renderSemanticFields(semanticDataInfo, true)}
                     </AccordionContent>
@@ -621,7 +702,7 @@ export default function PromptInteraction({ variants, slug }) {
             <CardFooter>
               <Button
                 onClick={handleInitialGenerate}
-                disabled={loading || isRefining || !selectedVariantId}
+                disabled={loading || isRefining || !selectedVariantId} // Deaktivieren, wenn keine ID gewählt oder keine Varianten da
                 className="w-full"
               >
                 {(loading && !isRefining) && (
@@ -632,7 +713,7 @@ export default function PromptInteraction({ variants, slug }) {
             </CardFooter>
           </Card>
 
-          {/* Rechte Spalte: Ausgabe */}
+          {/* Rechte Spalte: Ausgabe (bleibt größtenteils gleich) */}
           <Card className="flex flex-col">
             <CardHeader>
               <div className="flex justify-between items-center">
@@ -655,6 +736,7 @@ export default function PromptInteraction({ variants, slug }) {
               </div>
             </CardHeader>
             <CardContent className="flex-grow flex flex-col">
+              {/* Fehlermeldung (bleibt gleich) */}
               {errorMsg && (
                 <Alert variant="destructive" className="mb-4">
                    <AlertCircle className="h-4 w-4" />
@@ -663,6 +745,7 @@ export default function PromptInteraction({ variants, slug }) {
                 </Alert>
               )}
 
+              {/* Ergebnis-Textarea oder Platzhalter (bleibt gleich) */}
               {(generatedText || isRefining) && !loading ? (
                 <Textarea
                   readOnly
@@ -679,6 +762,7 @@ export default function PromptInteraction({ variants, slug }) {
                 </div>
               ) : null}
 
+              {/* Ladeanzeige für initiale Generierung (bleibt gleich) */}
               {loading && !isRefining && (
                 <div className="p-4 bg-muted/50 rounded-md border border-dashed text-sm text-muted-foreground min-h-[250px] flex items-center justify-center flex-grow">
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -687,52 +771,11 @@ export default function PromptInteraction({ variants, slug }) {
               )}
             </CardContent>
 
-            {/* Footer für Aktionen (ANGEPASST) */}
+            {/* Footer für Aktionen (bleibt gleich) */}
             {generatedText && !loading && (
               <CardFooter className="flex flex-col items-start gap-4 pt-4 border-t">
 
-                {/* --- NEU: Tonalitäts-Input hier platziert --- */}
-                <div className="w-full space-y-2 p-3 border rounded-md bg-muted/50">
-                  <Label htmlFor={`tone-${selectedVariantId}-adjust`}>Tonalität anpassen (optional):</Label>
-                  <div className="relative" ref={toneInputRef}> {/* ref hierher verschoben */}
-                    <Input
-                      id={`tone-${selectedVariantId}-adjust`} // Eindeutige ID
-                      value={selectedTone}
-                      onChange={handleToneInputChange}
-                      onFocus={() => {
-                        if (selectedTone.trim().length > 0 && filteredTones.length > 0) {
-                           setShowToneSuggestions(true);
-                        }
-                      }}
-                      placeholder="z.B. lockerer, formeller, witziger, kreativer..."
-                      autoComplete="off"
-                      disabled={isRefining} // Nur während Refine deaktivieren
-                    />
-                    {/* Vorschlagsliste */}
-                    {showToneSuggestions && filteredTones.length > 0 && (
-                      <Card className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
-                        <CardContent className="p-2">
-                          {filteredTones.map((tone) => (
-                            <button
-                              key={tone}
-                              type="button"
-                              onMouseDown={(e) => { e.preventDefault(); handleToneSuggestionClick(tone); }}
-                              className="block w-full text-left px-3 py-1.5 text-sm rounded-md hover:bg-accent"
-                            >
-                              {tone}
-                            </button>
-                          ))}
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
-                   <p className="text-xs text-muted-foreground">
-                     Gib hier einen Ton an, wenn du den generierten Text mit den Buttons unten anpassen möchtest.
-                   </p>
-                </div>
-                {/* --- ENDE NEU --- */}
-
-                {/* Bereich für Rephrase/Refine Buttons */}
+                {/* Bereich für Rephrase/Refine Buttons (bleibt gleich) */}
                 <div className="flex flex-wrap gap-2 w-full">
                    <Button variant="secondary" size="sm" onClick={handleRephrase} disabled={isRefining} className="flex items-center">
                      {isRefining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
@@ -744,7 +787,7 @@ export default function PromptInteraction({ variants, slug }) {
                    </Button>
                 </div>
 
-                {/* Bedingter Bereich für Zusatzinfos-Eingabe */}
+                {/* Bedingter Bereich für Zusatzinfos-Eingabe (bleibt gleich) */}
                 {showRefineInput && (
                   <div className="w-full space-y-2 p-3 border rounded-md bg-muted/50">
                     <Label htmlFor="additionalInfo" className="text-sm font-medium">Zusätzliche Anweisungen oder Informationen:</Label>
@@ -764,11 +807,11 @@ export default function PromptInteraction({ variants, slug }) {
                   </div>
                 )}
 
-                {/* Bereich für Teilen-Buttons */}
+                {/* Bereich für Teilen-Buttons (bleibt gleich) */}
                 <div className="w-full pt-4 border-t">
                     <span className="text-sm font-medium block mb-2">Teilen via:</span>
                     <div className="flex flex-wrap gap-2">
-                      {/* WhatsApp, LinkedIn, Facebook Buttons */}
+                      {/* WhatsApp, LinkedIn, Facebook Buttons (bleiben gleich) */}
                       <Button variant="outline" size="sm" asChild>
                         <a href={`whatsapp://send?text=${encodeURIComponent(generatedText)}`} data-action="share/whatsapp/share" target="_blank" rel="noopener noreferrer" className="flex items-center">
                           <MessageSquare className="h-4 w-4 mr-1" /> WhatsApp
@@ -790,7 +833,7 @@ export default function PromptInteraction({ variants, slug }) {
                          </a>
                        </Button>
 
-                      {/* E-Mail Senden Button (Dialog) */}
+                      {/* E-Mail Senden Button (Dialog bleibt gleich) */}
                       <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
                         <DialogTrigger asChild>
                           <Button variant="outline" size="sm" className="flex items-center">
@@ -848,7 +891,7 @@ export default function PromptInteraction({ variants, slug }) {
                         </DialogContent>
                       </Dialog>
 
-                      {/* Web Share API Button */}
+                      {/* Web Share API Button (bleibt gleich) */}
                       {canShare && (
                         <Button variant="outline" size="sm" onClick={handleWebShare} className="flex items-center">
                           <Share2 className="h-4 w-4 mr-1" /> Mehr...
@@ -861,6 +904,7 @@ export default function PromptInteraction({ variants, slug }) {
           </Card>
         </div>
       ) : (
+         // Fallback, wenn keine Variante ausgewählt ist
          <p className="text-muted-foreground p-4 text-center">
            {generationVariants.length === 0
              ? "Keine Prompt-Varianten für dieses Paket gefunden."
@@ -868,6 +912,6 @@ export default function PromptInteraction({ variants, slug }) {
          </p>
       )}
 
-    </div>
+    </div> // Ende Hauptcontainer
   );
 }
