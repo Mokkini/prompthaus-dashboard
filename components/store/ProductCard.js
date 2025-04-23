@@ -97,7 +97,7 @@ export function ProductCard({ prompt }) {
         {checkoutUrl ? (
           <Button asChild className="w-full">
             <Link href={checkoutUrl}>
-              Details & Kaufen <Zap className="ml-2 h-4 w-4" />
+              Kaufen <Zap className="ml-2 h-4 w-4" />
             </Link>
           </Button>
         ) : (
