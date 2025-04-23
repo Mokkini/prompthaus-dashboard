@@ -1,6 +1,6 @@
 // ======= Imports =======
 import { createClient } from '@/lib/supabase/server';
-import Navigation from '@/components/Navigation';
+// import Navigation from '@/components/Navigation'; // <-- ENTFERNEN: Wird vom Layout bereitgestellt
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
 import { Search, CreditCard, LayoutDashboard, ShieldCheck, FolderKanban } from 'lucide-react';
@@ -8,6 +8,7 @@ import Image from 'next/image';
 import { FaqSection } from '@/components/FaqSection';
 import RevealOnScroll from '@/components/ui/RevealOnScroll';
 
+// Kategorien bleiben wie sie sind
 const allCategories = [
   "Familienkommunikation", "Elternbriefe für Kita & Schule", "Behördenschreiben stressfrei",
   "Nachbarschaft & Zusammenleben", "E-Mail-Vorlagen für Profis", "Bewerbungsboost & Jobstart",
@@ -21,13 +22,16 @@ const categoriesToShow = allCategories.slice(0, 10);
 
 export default async function LandingPage() {
   const supabase = createClient();
+  // User-Daten werden weiterhin benötigt für den Admin-Check
   const { data: { user } } = await supabase.auth.getUser();
   const isAdmin = user && user.email === process.env.ADMIN_EMAIL;
 
   return (
+    // Das äußere Fragment <> </> kann bleiben oder entfernt werden
     <>
-      <Navigation user={user} />
+      {/* <Navigation user={user} /> */} {/* <-- ENTFERNEN */}
 
+      {/* Admin Panel Button bleibt, da er spezifisch für diese Seite ist */}
       {isAdmin && (
         <div className="container mx-auto px-4 pt-4 flex justify-end">
           <Button variant="outline" size="sm" asChild>
@@ -39,11 +43,13 @@ export default async function LandingPage() {
         </div>
       )}
 
+      {/* Der Hauptinhalt der Seite */}
       <main className="flex-grow">
 
         {/* === Hero Section === */}
         <section id="hero" className="relative py-24 md:py-32 lg:py-40 text-center bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-background">
-          <div className="container mx-auto px-4 z-10 relative">
+          {/* ... Inhalt Hero Section ... */}
+           <div className="container mx-auto px-4 z-10 relative">
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight mb-4 leading-tight">
               Die richtigen Worte, genau dann, wenn du sie brauchst
             </h1>
@@ -61,7 +67,8 @@ export default async function LandingPage() {
         {/* === Bild-Text Section === */}
         <RevealOnScroll>
           <section className="py-16 md:py-24 bg-background">
-            <div className="container mx-auto px-4">
+             {/* ... Inhalt Bild-Text Section ... */}
+             <div className="container mx-auto px-4">
               <div className="flex flex-col md:flex-row items-center gap-8 md:gap-12 lg:gap-16">
                 <div className="w-full md:w-1/2">
                   <Image
@@ -96,7 +103,8 @@ export default async function LandingPage() {
         {/* === So funktioniert's Abschnitt === */}
         <RevealOnScroll>
           <section id="how" className="py-12 md:py-20 bg-gray-50 dark:bg-gray-900">
-            <div className="container mx-auto px-4">
+            {/* ... Inhalt So funktioniert's ... */}
+             <div className="container mx-auto px-4">
               <h2 className="text-3xl font-bold text-center mb-10 md:mb-16">
                 In 3 einfachen Schritten zu deinem perfekten Text
               </h2>
@@ -133,7 +141,8 @@ export default async function LandingPage() {
         {/* === Kategorie-Karten Section === */}
         <RevealOnScroll>
           <section className="py-16 md:py-24 bg-background">
-            <div className="container mx-auto px-4">
+            {/* ... Inhalt Kategorien ... */}
+             <div className="container mx-auto px-4">
               <h2 className="text-3xl font-bold text-center mb-12">
                 Entdecke unsere Themenwelten
               </h2>
@@ -170,7 +179,8 @@ export default async function LandingPage() {
         {/* === PromptHaus Vorteilskommunikation === */}
         <RevealOnScroll>
           <section className="py-16 md:py-24 bg-muted/20 border-t border-border">
-            <div className="container mx-auto px-4 max-w-4xl text-center">
+            {/* ... Inhalt Vorteile ... */}
+             <div className="container mx-auto px-4 max-w-4xl text-center">
               <h2 className="text-2xl md:text-3xl font-semibold mb-6 text-primary">
                 Deshalb lieben Menschen PromptHaus
               </h2>
@@ -195,12 +205,15 @@ export default async function LandingPage() {
           </section>
         </RevealOnScroll>
 
+        {/* === FAQ Section === */}
         <RevealOnScroll>
           <FaqSection />
         </RevealOnScroll>
+
       </main>
 
-      <footer className="border-t py-8 bg-muted/40">
+      {/* <footer ...> */} {/* <-- ENTFERNEN */}
+      {/* <footer className="border-t py-8 bg-muted/40">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>© {new Date().getFullYear()} PromptHaus. Alle Rechte vorbehalten.</p>
           <div className="mt-2">
@@ -209,7 +222,8 @@ export default async function LandingPage() {
             <Link href="/datenschutz" className="hover:text-primary mx-2">Datenschutz</Link>
           </div>
         </div>
-      </footer>
+      </footer> */}
+      {/* --- ENDE ENTFERNEN --- */}
     </>
   );
 }

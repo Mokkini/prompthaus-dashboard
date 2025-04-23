@@ -1,8 +1,8 @@
-// app/pakete/page.js
+// app/(public)/pakete/page.js
 
 // ======= Imports =======
 import { createClient } from '@/lib/supabase/server';
-import Navigation from '@/components/Navigation';
+// import Navigation from '@/components/Navigation'; // <-- ENTFERNEN
 // Korrekter Named Import für ProductCard
 import { ProductCard } from '@/components/store/ProductCard'; // Pfad prüfen!
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,8 @@ const createFilterUrl = (currentSearchParams, newParam) => {
 // ======= Hauptfunktion der Paketseite =======
 export default async function PaketePage({ searchParams }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // User wird hier nicht mehr für Navigation gebraucht, aber vielleicht für andere Logik?
+  // const { data: { user } } = await supabase.auth.getUser(); // <-- Kann ggf. weg, wenn user hier nicht benötigt wird
 
   // --- Filter- und Sortierparameter auslesen ---
   const selectedCategory = searchParams?.kategorie;
@@ -121,8 +122,9 @@ export default async function PaketePage({ searchParams }) {
 
   // Seitenstruktur (JSX)
   return (
+    // Das äußere Fragment <> </> kann bleiben oder entfernt werden
     <>
-      <Navigation user={user} />
+      {/* <Navigation user={user} /> */} {/* <-- ENTFERNEN */}
       <main className="flex-grow py-12 md:py-16 lg:py-20">
         <div className="container mx-auto px-4 md:px-6">
           <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-center mb-10 md:mb-16">
@@ -213,8 +215,8 @@ export default async function PaketePage({ searchParams }) {
         </div>
       </main>
 
-      {/* Footer (bleibt unverändert) */}
-      <footer className="border-t py-8 bg-muted/40 mt-16">
+      {/* <footer ...> */} {/* <-- ENTFERNEN */}
+      {/* <footer className="border-t py-8 bg-muted/40 mt-16">
          <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>© {new Date().getFullYear()} PromptHaus. Alle Rechte vorbehalten.</p>
           <div className="mt-2">
@@ -223,7 +225,8 @@ export default async function PaketePage({ searchParams }) {
             <Link href="/datenschutz" className="hover:text-primary mx-2">Datenschutz</Link>
           </div>
         </div>
-      </footer>
+      </footer> */}
+      {/* --- ENDE ENTFERNEN --- */}
     </>
   );
 }

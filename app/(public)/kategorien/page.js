@@ -1,10 +1,10 @@
-// app/kategorien/page.js
+// app/(public)/kategorien/page.js
 'use client';
 
 // Suspense importieren
 import React, { useState, useMemo, Suspense } from 'react';
 import Link from 'next/link';
-import Navigation from '@/components/Navigation'; // Pfad prüfen!
+// import Navigation from '@/components/Navigation'; // <-- ENTFERNEN
 import { useSearchParams } from 'next/navigation';
 // Icons
 import { ArrowDownUp, Check, FolderKanban, Search, Loader2 } from 'lucide-react'; // Loader2 für Fallback
@@ -43,7 +43,7 @@ const createCategorySortUrl = (currentSearchParams, newSort) => {
     return queryString ? `/kategorien?${queryString}` : '/kategorien';
 };
 
-// --- NEU: Eigene Komponente für den Inhalt, der useSearchParams nutzt ---
+// --- Eigene Komponente für den Inhalt, der useSearchParams nutzt (bleibt gleich) ---
 function KategorieContent() {
   const searchParams = useSearchParams();
   const currentCategorySort = searchParams.get('sort') || 'asc';
@@ -148,7 +148,7 @@ function KategorieContent() {
 }
 // --- ENDE NEUE Komponente ---
 
-// --- NEU: Fallback-Komponente für Suspense ---
+// --- Fallback-Komponente für Suspense (bleibt gleich) ---
 function LoadingFallback() {
   return (
     <main className="flex-grow py-12 md:py-16 lg:py-20">
@@ -175,16 +175,18 @@ function LoadingFallback() {
 // Hauptkomponente, die Suspense verwendet
 export default function KategorienPageWrapper() { // Umbenannt, um Konflikt zu vermeiden
   return (
+    // Das äußere Fragment <> </> kann bleiben oder entfernt werden
     <>
-      <Navigation user={null} />
-      {/* --- NEU: Suspense Boundary --- */}
+      {/* <Navigation user={null} /> */} {/* <-- ENTFERNEN */}
+
+      {/* --- Suspense Boundary (bleibt gleich) --- */}
       <Suspense fallback={<LoadingFallback />}>
         <KategorieContent />
       </Suspense>
       {/* --- ENDE NEU --- */}
 
-      {/* Footer (bleibt gleich) */}
-       <footer className="border-t py-8 bg-muted/40 mt-16">
+      {/* <footer ...> */} {/* <-- ENTFERNEN */}
+      {/* <footer className="border-t py-8 bg-muted/40 mt-16">
          <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
            <p>© {new Date().getFullYear()} PromptHaus. Alle Rechte vorbehalten.</p>
              <div className="mt-2">
@@ -193,7 +195,8 @@ export default function KategorienPageWrapper() { // Umbenannt, um Konflikt zu v
                <Link href="/datenschutz" className="hover:text-primary mx-2">Datenschutz</Link>
              </div>
          </div>
-       </footer>
+       </footer> */}
+       {/* --- ENDE ENTFERNEN --- */}
     </>
   );
 }
