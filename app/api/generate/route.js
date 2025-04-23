@@ -75,7 +75,8 @@ export async function POST(request) {
 
     // --- ANGEPASST: 2. Authentifizierung und Autorisierung ---
     // Prüfe zuerst, ob es sich um den kostenlosen Prompt handelt (generate oder rephrase)
-    const isFreePromptRequest = promptPackageSlug === FREE_PROMPT_SLUG && (action === 'generate' || action === 'rephrase');
+    const isFreePromptRequest = promptPackageSlug === FREE_PROMPT_SLUG && (action === 'generate' || action === 'rephrase' || action === 'refine');
+
 
     if (isFreePromptRequest) {
       hasAccess = true;
