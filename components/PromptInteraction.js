@@ -1,4 +1,4 @@
-// components/PromptInteraction.js - Angepasst für variantId (String), verschobenen Tonalitäts-Input, Joyride-Klassen & zweiten Tooltip
+// components/PromptInteraction.js - Angepasst für variantId (String) und verschobenen Tonalitäts-Input
 
 "use client";
 
@@ -21,7 +21,6 @@ import {
 import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from "@/components/ui/accordion";
-import * as Tooltip from '@radix-ui/react-tooltip'; // Tooltip importieren
 
 // Hilfsfunktion zum Formatieren (bleibt gleich)
 const formatPlaceholderName = (name) => {
@@ -528,9 +527,9 @@ export default function PromptInteraction({ variants, slug }) {
 
       {/* Variantenauswahl */}
       {generationVariants.length > 1 && (
-        // --- NEUE KLASSE HIER ---
-        <div className="variant-selector-area">
-          <div className="flex flex-wrap gap-3 justify-center px-2">
+        <div>
+          
+          <div className="flex flex-wrap gap-3 justify-center px-2"> {/* <--- Padding hier */}
             {generationVariants.map((variant) => (
               <button
                 key={variant.id}
@@ -555,13 +554,13 @@ export default function PromptInteraction({ variants, slug }) {
             ))}
           </div>
         </div>
-        // --- ENDE NEUE KLASSE ---
       )}
 
       {/* Haupt-Grid */}
       {currentVariant ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 px-2">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 px-2"> {/* <--- Padding hier */}
           {/* Linke Spalte: Eingabe */}
+          {/* --- KORREKTUR: Klasse hier im Card-Tag --- */}
           <Card className="border-input">
             <CardHeader>
               {currentVariant?.description && (
@@ -569,10 +568,11 @@ export default function PromptInteraction({ variants, slug }) {
               )}
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* --- Tonalität Input ENTFERNT --- */}
+
               {/* Dynamische Felder (Erforderlich) */}
               {Object.keys(semanticDataInfo).length > 0 ? (
-                  // --- NEUE KLASSE HIER ---
-                  <div className="input-fields-area">
+                  <div>
                       <h3 className="text-base font-semibold mb-3">Damit dein Text wirkt …</h3>
                       <div className="grid grid-cols-1 gap-4 mt-6">
                           {renderSemanticFields(semanticDataInfo, false)}
@@ -589,20 +589,18 @@ export default function PromptInteraction({ variants, slug }) {
                           </p>
                       )}
                   </div>
-                  // --- ENDE NEUE KLASSE ---
               ) : (
                    <p className="text-sm text-muted-foreground">Keine Eingabefelder für diese Variante definiert.</p>
               )}
 
               {/* Optionaler Bereich mit Accordion */}
               {hasOptionalFields && (
-                // --- NEUE KLASSE HIER (optional, falls du es auch hervorheben willst) ---
                 <Accordion
                   type="single"
                   collapsible
                   value={accordionValue}
                   onValueChange={setAccordionValue}
-                  className="w-full pt-4 border-t input-fields-area-optional"
+                  className="w-full pt-4 border-t"
                 >
                   <AccordionItem value="optional-fields" className="border-b-0">
                   <AccordionTrigger className={cn(
@@ -616,7 +614,6 @@ export default function PromptInteraction({ variants, slug }) {
                     </AccordionContent>
                   </AccordionItem>
                 </Accordion>
-                // --- ENDE NEUE KLASSE ---
               )}
             </CardContent>
             <CardFooter>
@@ -634,8 +631,8 @@ export default function PromptInteraction({ variants, slug }) {
           </Card>
 
           {/* Rechte Spalte: Ausgabe */}
-          {/* --- NEUE KLASSE HIER --- */}
-          <Card className="flex flex-col border-input output-area">
+          {/* --- KORREKTUR: Klasse hier im Card-Tag --- */}
+          <Card className="flex flex-col border-input">
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Generierter Text</CardTitle>
@@ -693,12 +690,12 @@ export default function PromptInteraction({ variants, slug }) {
             {generatedText && !loading && (
               <CardFooter className="flex flex-col items-start gap-4 pt-4 border-t">
 
-                {/* Tonalitäts-Input */}
+                {/* --- NEU: Tonalitäts-Input hier platziert --- */}
                 <div className="w-full space-y-2 p-3 border rounded-md bg-muted/50">
                   <Label htmlFor={`tone-${selectedVariantId}-adjust`}>Tonalität anpassen (optional):</Label>
-                  <div className="relative" ref={toneInputRef}>
+                  <div className="relative" ref={toneInputRef}> {/* ref hierher verschoben */}
                     <Input
-                      id={`tone-${selectedVariantId}-adjust`}
+                      id={`tone-${selectedVariantId}-adjust`} // Eindeutige ID
                       value={selectedTone}
                       onChange={handleToneInputChange}
                       onFocus={() => {
@@ -708,8 +705,9 @@ export default function PromptInteraction({ variants, slug }) {
                       }}
                       placeholder="z.B. lockerer, formeller, witziger, kreativer..."
                       autoComplete="off"
-                      disabled={isRefining}
+                      disabled={isRefining} // Nur während Refine deaktivieren
                     />
+                    {/* Vorschlagsliste */}
                     {showToneSuggestions && filteredTones.length > 0 && (
                       <Card className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
                         <CardContent className="p-2">
@@ -731,10 +729,10 @@ export default function PromptInteraction({ variants, slug }) {
                      Gib hier einen Ton an, wenn du den generierten Text mit den Buttons unten anpassen möchtest.
                    </p>
                 </div>
+                {/* --- ENDE NEU --- */}
 
                 {/* Bereich für Rephrase/Refine Buttons */}
-                {/* --- Anpassung: items-center hinzugefügt für vertikale Ausrichtung --- */}
-                <div className="flex flex-wrap gap-2 w-full items-center">
+                <div className="flex flex-wrap gap-2 w-full">
                    <Button variant="secondary" size="sm" onClick={handleRephrase} disabled={isRefining} className="flex items-center">
                      {isRefining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                      {isRefining ? 'Formuliere neu...' : 'Neu formulieren'}
@@ -743,29 +741,6 @@ export default function PromptInteraction({ variants, slug }) {
                      <Info className="mr-2 h-4 w-4" />
                      {showRefineInput ? 'Zusatzinfos ausblenden' : 'Zusatzinfos angeben'}
                    </Button>
-
-                   {/* <<< NEUER TOOLTIP für Anpassungsoptionen >>> */}
-                   <Tooltip.Root>
-                     <Tooltip.Trigger asChild>
-                       <button className="p-1 text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-full">
-                         <Info className="h-4 w-4" />
-                         <span className="sr-only">Hilfe zu Anpassungsoptionen</span>
-                       </button>
-                     </Tooltip.Trigger>
-                     <Tooltip.Portal>
-                       <Tooltip.Content
-                         side="top" // Oder 'bottom', je nach Platz
-                         align="center"
-                         sideOffset={6}
-                         className="max-w-xs rounded bg-gray-50 p-3 text-gray-800 text-sm shadow-lg border border-gray-200 z-50"
-                       >
-                         Hier kannst du den Text automatisch neu formulieren lassen (ggf. mit angepasster Tonalität) oder durch zusätzliche Anweisungen verfeinern.
-                         <Tooltip.Arrow className="fill-gray-50" />
-                       </Tooltip.Content>
-                     </Tooltip.Portal>
-                   </Tooltip.Root>
-                   {/* <<< ENDE NEUER TOOLTIP >>> */}
-
                 </div>
 
                 {/* Bedingter Bereich für Zusatzinfos-Eingabe */}
@@ -883,7 +858,6 @@ export default function PromptInteraction({ variants, slug }) {
               </CardFooter>
             )}
           </Card>
-          {/* --- ENDE NEUE KLASSE --- */}
         </div>
       ) : (
          <p className="text-muted-foreground p-4 text-center">
