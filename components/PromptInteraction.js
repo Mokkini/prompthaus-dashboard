@@ -739,7 +739,7 @@ export default function PromptInteraction({ variants, slug }) {
                    </Button>
                    <Button variant="secondary" size="sm" onClick={handleToggleRefineInput} disabled={isRefining} className="flex items-center">
                      <Info className="mr-2 h-4 w-4" />
-                     {showRefineInput ? 'Zusatzinfos ausblenden' : 'Zusatzinfos angeben'}
+                     {showRefineInput ? 'ausblenden' : 'Zusatzinfos'}
                    </Button>
                 </div>
 
