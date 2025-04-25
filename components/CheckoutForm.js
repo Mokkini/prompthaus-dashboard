@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Loader2, CheckCircle2, AlertCircle, ArrowRight, ShieldCheck, PackageCheck } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { loadStripe } from '@stripe/stripe-js';
@@ -10,6 +11,11 @@ import { createCheckoutSession } from '@/app/actions';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+// Checkbox und Label importieren
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+// Alert Komponenten importieren
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
 
@@ -18,9 +24,21 @@ export default function CheckoutForm({ packageDetails }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [paymentStatus, setPaymentStatus] = useState(null);
+  // --- NEU: Nur noch ein State für die kombinierte Zustimmung ---
+  const [consentCombined, setConsentCombined] = useState(false);
   const router = useRouter();
 
+  // --- Prüfen, ob die kombinierte Zustimmung gegeben wurde ---
+  const canProceed = consentCombined;
+
   const handleStripeCheckout = async () => {
+    // --- Prüfung angepasst ---
+    if (!canProceed) {
+        setError("Bitte bestätige den Hinweis zum Widerrufsrecht, um fortzufahren.");
+        return;
+    }
+    // --- Ende Prüfung ---
+
     setIsLoading(true);
     setSelectedMethod('stripe');
     setError(null);
@@ -59,7 +77,15 @@ export default function CheckoutForm({ packageDetails }) {
     }
   };
 
+  // --- PayPal createOrder: Prüfung angepasst ---
   const createPayPalOrder = async (data, actions) => {
+    if (!canProceed) {
+        setError("Bitte bestätige den Hinweis zum Widerrufsrecht, um die PayPal-Zahlung zu starten.");
+        throw new Error("Zustimmung fehlt.");
+    }
+    setError(null); // Fehler zurücksetzen
+
+    // Rest der Funktion bleibt gleich
     const response = await fetch('/api/paypal/create-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -75,6 +101,7 @@ export default function CheckoutForm({ packageDetails }) {
     if (orderData.orderID) return orderData.orderID;
     throw new Error('Keine PayPal Order ID von API erhalten.');
   };
+  // --- Ende PayPal createOrder Anpassung ---
 
   const onPayPalApprove = async () => {
     setPaymentStatus('processing');
@@ -87,7 +114,9 @@ export default function CheckoutForm({ packageDetails }) {
   };
 
   const onPayPalError = (err) => {
-    setError("Ein Fehler ist während des PayPal-Bezahlvorgangs aufgetreten. Bitte versuche es erneut oder wähle eine andere Methode.");
+    if (err.message !== "Zustimmung fehlt.") {
+        setError("Ein Fehler ist während des PayPal-Bezahlvorgangs aufgetreten. Bitte versuche es erneut oder wähle eine andere Methode.");
+    }
     setPaymentStatus('error');
     setIsLoading(false);
     setSelectedMethod(null);
@@ -134,38 +163,72 @@ export default function CheckoutForm({ packageDetails }) {
         </CardHeader>
 
         <CardContent className="space-y-6 pt-4">
+          {/* Statusmeldungen */}
           {paymentStatus === 'processing' && !error && (
-            <div className="flex items-center justify-center p-3 text-blue-700 bg-blue-100 rounded-md border border-blue-200">
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              <span>Zahlung wird verarbeitet...</span>
+            <div className="flex items-center justify-center text-sm text-muted-foreground p-4 bg-blue-50 border border-blue-200 rounded-md">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-600" />
+              <span>Zahlung wird verarbeitet... Bitte warte.</span>
             </div>
           )}
-
           {paymentStatus === 'success' && (
-            <div className="p-4 text-green-800 bg-green-100 rounded-lg border border-green-200 space-y-3">
-              <div className="flex items-center">
-                <CheckCircle2 className="mr-2 h-5 w-5 flex-shrink-0" />
-                <span className="font-semibold">Zahlung erfolgreich!</span>
-              </div>
-              <p className="text-sm">Du wirst in Kürze freigeschaltet.</p>
-              <p className="text-sm">Falls du neu bist, prüfe dein E-Mail-Postfach (auch den Spam-Ordner).</p>
-              <Button onClick={() => router.push('/meine-prompts')} className="w-full">
-                Zu meinen Prompts <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
+            <Alert variant="default" className="bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-700">
+              <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+              <AlertTitle className="text-green-800 dark:text-green-200">Zahlung erfolgreich!</AlertTitle>
+              <AlertDescription className="text-green-700 dark:text-green-300">
+                Vielen Dank für deinen Kauf! Du wirst in Kürze zu deinen Prompts weitergeleitet oder kannst sie jetzt in deinem Bereich finden.
+                <Button variant="link" size="sm" className="pl-1 h-auto py-0 text-green-700 dark:text-green-300" asChild>
+                  <Link href="/meine-prompts">Zu meinen Prompts <ArrowRight className="ml-1 h-3 w-3" /></Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
           )}
-
           {error && (
-            <div className="flex items-start p-3 text-red-700 bg-red-100 rounded-md border border-red-200">
-              <AlertCircle className="mr-2 h-5 w-5 flex-shrink-0" />
-              <span className="text-sm">{error}</span>
-            </div>
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Zahlungsfehler</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
 
+          {/* Nur anzeigen, wenn Zahlung noch nicht läuft oder erfolgreich war */}
           {paymentStatus !== 'processing' && paymentStatus !== 'success' && (
             <div className="space-y-4">
+
+              {/* --- NEU: Kombinierte Checkbox --- */}
+              <div className="p-4 border rounded-md bg-muted/50">
+                 <div className="flex items-start space-x-2">
+                   <Checkbox
+                     id="consent-combined"
+                     checked={consentCombined}
+                     onCheckedChange={setConsentCombined}
+                     disabled={isLoading}
+                     aria-labelledby="consent-combined-label"
+                     // required // 'required' wird nicht direkt von Shadcn Checkbox unterstützt, Logik über Button-Deaktivierung
+                   />
+                   <Label
+                     htmlFor="consent-combined"
+                     id="consent-combined-label"
+                     className="text-xs leading-normal cursor-pointer"
+                   >
+                     Ich stimme ausdrücklich zu, dass PromptHaus vor Ablauf der Widerrufsfrist mit der Ausführung des Vertrags beginnt und mir bekannt ist, dass ich dadurch mein Widerrufsrecht verliere.
+                   </Label>
+                 </div>
+                 {/* Optional: Link zu den AGB hinzufügen */}
+                 <p className="text-xs text-muted-foreground pt-2 pl-6"> {/* Einrückung für Konsistenz */}
+                   Mit dem Kauf akzeptierst du unsere <Link href="/agb" target="_blank" className="underline hover:text-primary">AGB</Link>.
+                 </p>
+              </div>
+              {/* --- ENDE NEU --- */}
+
+              {/* Stripe Button (disabled-Logik angepasst) */}
               {process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY && (
-                <Button onClick={handleStripeCheckout} disabled={isLoading} size="lg" className="w-full">
+                <Button
+                  onClick={handleStripeCheckout}
+                  // --- Angepasst: Hängt nur noch von consentCombined ab ---
+                  disabled={isLoading || !canProceed}
+                  size="lg"
+                  className="w-full"
+                >
                   {isLoading && selectedMethod === 'stripe' ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -177,27 +240,34 @@ export default function CheckoutForm({ packageDetails }) {
                 </Button>
               )}
 
+              {/* Trenner */}
               {process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY && process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID && (
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">Oder</span>
-                  </div>
-                </div>
+                 <div className="relative my-4">
+                   <div className="absolute inset-0 flex items-center">
+                     <span className="w-full border-t" />
+                   </div>
+                   <div className="relative flex justify-center text-xs uppercase">
+                     <span className="bg-white px-2 text-muted-foreground">
+                       Oder
+                     </span>
+                   </div>
+                 </div>
               )}
 
+              {/* PayPal Buttons (disabled-Logik angepasst) */}
               {process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID && (
                 <PayPalScriptProvider options={initialOptions}>
-                  <div className={isLoading ? 'opacity-50 pointer-events-none' : ''}>
+                  {/* --- Angepasst: Hängt nur noch von consentCombined ab --- */}
+                  <div className={(isLoading || !canProceed) ? 'opacity-50 pointer-events-none' : ''}>
                     <PayPalButtons
                       style={{ layout: "vertical", color: "blue", shape: "rect", label: "pay" }}
-                      disabled={isLoading}
+                      // --- Angepasst: Hängt nur noch von consentCombined ab ---
+                      disabled={isLoading || !canProceed}
                       createOrder={createPayPalOrder}
                       onApprove={onPayPalApprove}
                       onError={onPayPalError}
                       onCancel={onPayPalCancel}
+                      title={!canProceed ? "Bitte bestätige zuerst den Hinweis zum Widerrufsrecht." : ""}
                     />
                   </div>
                 </PayPalScriptProvider>

@@ -1,0 +1,18 @@
+# robots.txt für PromptHaus
+
+User-agent: *
+
+# Bereiche, die nicht gecrawlt werden sollen
+Disallow: /admin/
+Disallow: /meine-prompts/
+Disallow: /checkout/
+Disallow: /login
+Disallow: /register # Falls vorhanden
+Disallow: /auth/ # Alle Auth-bezogenen Pfade
+Disallow: /api/
+
+# Erlaube das Crawlen aller anderen Bereiche (implizit durch fehlendes Disallow)
+# Allow: / # Kann explizit hinzugefügt werden, ist aber oft Standard
+
+# Pfad zur Sitemap (ersetze DEINE_DOMAIN durch deine tatsächliche Domain)
+Sitemap: https://www.prompthaus.de/sitemap.xml

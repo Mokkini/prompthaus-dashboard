@@ -1,4 +1,4 @@
-// components/layout/Footer.js
+// components/Footer.js
 import Link from 'next/link';
 
 export default function Footer() {
@@ -10,13 +10,18 @@ export default function Footer() {
         <div className="mb-4 sm:mb-0">
           © {currentYear} PromptHaus. Alle Rechte vorbehalten.
         </div>
-        <nav className="flex space-x-4">
+        <nav className="flex flex-wrap justify-center sm:justify-end space-x-4"> {/* flex-wrap hinzugefügt für kleinere Bildschirme */}
           <Link href="/impressum" className="hover:text-primary hover:underline">
             Impressum
           </Link>
           <Link href="/datenschutz" className="hover:text-primary hover:underline">
             Datenschutz
           </Link>
+          {/* --- NEUER LINK --- */}
+          <Link href="/agb" className="hover:text-primary hover:underline">
+            AGB
+          </Link>
+          {/* --- ENDE NEUER LINK --- */}
           {/* Add other links here if needed */}
         </nav>
       </div>

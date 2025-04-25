@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import Link from 'next/link';
 // Icons
 import { XCircle, LayoutGrid, ArrowLeft, ArrowDownUp, Check, ListFilter } from 'lucide-react';
-import RevealOnScroll from '@/components/ui/RevealOnScroll';
+// import RevealOnScroll from '@/components/ui/RevealOnScroll'; // <-- Entfernt für den Test
 // Shadcn UI Komponenten für Dropdown
 import {
   DropdownMenu,
@@ -203,14 +203,14 @@ export default async function PaketePage({ searchParams }) {
                 : 'Momentan sind keine Textpakete verfügbar. Schau bald wieder vorbei!'}
             </p>
           ) : (
-            <RevealOnScroll>
+            // <RevealOnScroll> <-- Entfernt für den Test
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {filteredPromptPackages.map((promptPackage) => (
                   // Hier wird das Paket inkl. der geladenen Varianten übergeben
                   <ProductCard key={promptPackage.id} prompt={promptPackage} />
                 ))}
               </div>
-            </RevealOnScroll>
+            // </RevealOnScroll> <-- Entfernt für den Test
           )}
         </div>
       </main>

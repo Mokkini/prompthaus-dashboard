@@ -5,6 +5,10 @@ import Link from 'next/link';
 export const metadata = {
   title: "Datenschutzerklärung - PromptHaus",
   description: "Datenschutzerklärung für die Nutzung von PromptHaus.",
+  robots: {
+    index: false, // noindex
+    follow: true, // follow
+  },
 };
 
 export default function DatenschutzPage() {

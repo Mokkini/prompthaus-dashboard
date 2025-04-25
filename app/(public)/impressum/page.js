@@ -5,6 +5,10 @@ import Link from 'next/link';
 export const metadata = {
   title: "Impressum - PromptHaus",
   description: "Impressum und rechtliche Hinweise für PromptHaus.",
+  robots: {
+    index: false, // Entspricht noindex
+    follow: true, // Erlaubt das Folgen von Links auf der Seite
+  },
 };
 
 export default function ImpressumPage() {
