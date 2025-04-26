@@ -44,3 +44,5 @@ next-env.d.ts
 
 # Internen Chat ignorieren
 app/(internal)/chat/
+# Interne Chat API-Route ignorieren
+app/api/chat/
