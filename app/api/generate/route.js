@@ -1,16 +1,19 @@
-// app/api/generate/route.js - ANGEPASST für neue DB-Struktur und kostenlosen Prompt
+// app/api/generate/route.js - ANGEPASST mit Nachbearbeitung für Sterne
 
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient as createServiceRoleClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 
-// --- ANGEPASST: Slug für den kostenlosen Prompt ---
-const FREE_PROMPT_SLUG = 'testprompt'; // <-- Geändert
-// --- ENDE ANPASSUNG ---
+// --- Konstanten ---
+const FREE_PROMPT_SLUG = 'testprompt';
+const TEST_USER_EMAIL = 'danadi@gmx.de';
+const OPENAI_MODEL = 'gpt-4o-mini';
+const DEFAULT_TEMPERATURE = 0.5;
+const DEFAULT_MAX_TOKENS = 1500;
+// --- ENDE Konstanten ---
 
-const TEST_USER_EMAIL = 'danadi@gmx.de'; // Deine Test-E-Mail
-
+// --- Supabase & OpenAI Clients ---
 const supabaseService = createServiceRoleClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -19,37 +22,40 @@ const supabaseService = createServiceRoleClient(
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-
-const OPENAI_MODEL = 'gpt-4o-mini';
-const DEFAULT_TEMPERATURE = 0.7;
-const DEFAULT_MAX_TOKENS = 1500;
+// --- ENDE Clients ---
 
 // --- System Prompts (gekürzt) ---
-const DEFAULT_SYSTEM_PROMPT = `Du bist ein professioneller Textassistent für moderne Kommunikation.
+const DEFAULT_SYSTEM_PROMPT = `Du bist ein professioneller Textassistent für moderne Kommunikation. Deine Aufgabe ist es, aus strukturierten JSON-Daten hochwertige, klar formulierte und kontextgerechte Texte zu erstellen.
 
-Deine Aufgabe:
-- Formuliere aus strukturierten Eingabedaten des User-Prompts einen kohärenten, klar verständlichen Text.
-- Beachte alle zusätzlichen Anweisungen bezüglich Ton, Stil und Inhalt streng.
-- Integriere Datenfelder (Schlüssel/Werte) auf natürliche Weise, ohne sie wörtlich zu wiederholen.
+Deine Rolle:
+- Du verwandelst jeden Eintrag aus einer "generation_variant" in einen überzeugenden Fließtext.
+- Du beachtest alle Anweisungen aus dem Kontextobjekt, insbesondere Ton, Stil, Format und Zielgruppe.
+- Du verwendest keine Feldnamen aus dem JSON wörtlich, sondern integrierst deren Inhalte natürlich und elegant in den Textfluss.
 
-Stil- und Tonvorgaben:
-- Verfasse klare, prägnante und überzeugende Texte.
-- Passe Ton und Ausdrucksweise genau dem angegebenen Kontext an.
-- Achte insbesondere bei formellen und beruflichen Anlässen auf professionelle Formulierungen.
+Ton & Stil:
+- Passe Tonalität, Ausdruck und sprachliche Feinheiten exakt an den angegebenen Gesamtton (overall_tone) und die emotionale Haltung (persona.emotion) an.
+- Berücksichtige das Feld formality_level für die Wahl der Anredeform ("du" oder "Sie"). Bei "Formell" ist die Du-Form ausgeschlossen.
+- Richte dich nach den Vorgaben aus stylistic_rules, z. B. zur Verwendung von Emojis, Aufzählungen oder formeller Sprache.
 
-Formatierung:
-- Gib das Ergebnis übersichtlich strukturiert und gut lesbar aus.
-- Vermeide eng zusammenhängende, unübersichtliche Satzketten.
-- Nutze ggf. Absätze, Listen oder Zwischenüberschriften, um die Verständlichkeit deutlich zu erhöhen.
+Struktur & Formatierung:
+- Gliedere den Text in sinnvolle Abschnitte. Jeder Gedanke erhält einen eigenen Absatz.
+- Verwende bei Bedarf Absätze, Spiegelstriche oder stilistische Elemente – jedoch nur, wenn sie dem gewählten Kanal und Ton entsprechen.
+- Lange Absätze mit mehreren Aussagen sind aufzuteilen, um Lesefluss und Klarheit zu verbessern.
 
 Zielsetzung:
-- Ein kurzer, abgerundeter Text, der eigenständig überzeugt – keine bloße Ausfüllhilfe.
+- Erzeuge eigenständige, stimmige Texte, die realistisch und nutzbar sind – nicht wie Formulierungshilfen.
+- Der Text soll auch ohne zusätzliche Erklärung sofort überzeugen und in sich abgeschlossen sein.
 
 Ausgabe:
-- Liefere ausschließlich den fertigen Text zurück.
-- Keine Erklärungen, keine Wiederholung der Originaldaten.`;
+- Gib ausschließlich den fertigen Text zurück – ohne Erklärungen, Kommentare oder Wiederholung der Eingangsdaten.
+- Kein Markdown, keine Hervorhebungen, keine technischen Hinweise.
 
-const REFINE_SYSTEM_PROMPT = `Du bist ein hilfreicher Assistent. Deine Aufgabe ist es, einen vorhandenen Text basierend auf zusätzlichen Anweisungen oder Informationen zu überarbeiten und zu verbessern. Behalte den ursprünglichen Zweck und Ton bei, sofern nicht anders angewiesen.`;
+Dein Ziel:
+Ein sprachlich stilvoller, inhaltlich glaubwürdiger und sauber gegliederter Text, der exakt zur jeweiligen Variante passt.`;
+
+// --- ANGEPASSTER REFINE System Prompt (Option 1, kann parallel verwendet werden) ---
+const REFINE_SYSTEM_PROMPT = `Du bist ein hilfreicher Assistent. Deine Aufgabe ist es, einen vorhandenen Text basierend auf zusätzlichen Anweisungen oder Informationen zu überarbeiten und zu verbessern. Behalte den ursprünglichen Zweck und Ton bei, sofern nicht anders angewiesen.
+**WICHTIG: Gib NUR den reinen, überarbeiteten Text zurück. Verwende KEINE Markdown-Formatierung wie Sterne (*), Fett- oder Kursivschrift.**`;
 // --- ENDE System Prompts ---
 
 export async function POST(request) {
@@ -60,7 +66,7 @@ export async function POST(request) {
   let packageId = null;
 
   try {
-    // 1. Anfragedaten lesen und validieren (bleibt gleich)
+    // 1. Anfragedaten lesen und validieren
     const body = await request.json();
     const {
         action = 'generate',
@@ -69,13 +75,16 @@ export async function POST(request) {
         placeholders,
         tone,
         originalText,
-        additionalInfo
+        additionalInfo,
+        // Optionale Parameter für OpenAI (falls du sie hier auch nutzen willst)
+        temperature,
+        max_tokens
     } = body;
 
     console.log("Empfangene Aktion:", action);
-    console.log("Empfangene Daten:", { promptPackageSlug, variantId, action, tone });
+    console.log("Empfangene Daten:", { promptPackageSlug, variantId, action, tone, temperature, max_tokens });
 
-    // Grundlegende Validierung (bleibt gleich)
+    // Grundlegende Validierung
     if (['generate', 'rephrase'].includes(action)) {
         if (!promptPackageSlug || typeof variantId !== 'string' || !variantId.trim() || !placeholders || typeof placeholders !== 'object') {
            console.error("Ungültige Eingabedaten für generate/rephrase:", body);
@@ -89,15 +98,33 @@ export async function POST(request) {
         }
     }
 
-    // --- ANGEPASST: 2. Authentifizierung und Autorisierung ---
-    // Prüfe zuerst, ob es sich um den kostenlosen Prompt handelt (generate oder rephrase)
-    const isFreePromptRequest = promptPackageSlug === FREE_PROMPT_SLUG && (action === 'generate' || action === 'rephrase' || action === 'refine');
+    // Validierung für optionale OpenAI Parameter
+    let finalTemperature = DEFAULT_TEMPERATURE;
+    if (temperature !== undefined) {
+        const tempNum = Number(temperature);
+        if (!isNaN(tempNum) && tempNum >= 0 && tempNum <= 2) {
+            finalTemperature = tempNum;
+        } else {
+            console.warn(`Ungültige Temperature '${temperature}' empfangen. Verwende Standard: ${DEFAULT_TEMPERATURE}`);
+        }
+    }
 
+    let finalMaxTokens = DEFAULT_MAX_TOKENS;
+    if (max_tokens !== undefined) {
+        const maxTokensNum = Number(max_tokens);
+        if (!isNaN(maxTokensNum) && Number.isInteger(maxTokensNum) && maxTokensNum > 0) {
+            finalMaxTokens = maxTokensNum;
+        } else {
+            console.warn(`Ungültige max_tokens '${max_tokens}' empfangen. Verwende Standard: ${DEFAULT_MAX_TOKENS}`);
+        }
+    }
+
+    // 2. Authentifizierung und Autorisierung (Logik von vorher)
+    const isFreePromptRequest = promptPackageSlug === FREE_PROMPT_SLUG && (action === 'generate' || action === 'rephrase' || action === 'refine');
 
     if (isFreePromptRequest) {
       hasAccess = true;
       console.log(`Zugriff gewährt: Kostenloser Prompt '${FREE_PROMPT_SLUG}'.`);
-      // Lade die Paket-ID für den kostenlosen Prompt
       const { data: freePackageInfo, error: freePackageError } = await supabaseService
         .from('prompt_packages')
         .select('id')
@@ -111,7 +138,6 @@ export async function POST(request) {
       console.log(`Paket-ID für kostenlosen Prompt: ${packageId}`);
 
     } else {
-      // Wenn es NICHT der kostenlose Prompt ist, führe die normale Auth/Authz durch
       console.log("Kein kostenloser Prompt. Prüfe Authentifizierung...");
       const supabaseAuth = createServerClient();
       const { data: { user: loggedInUser }, error: userError } = await supabaseAuth.auth.getUser();
@@ -123,11 +149,9 @@ export async function POST(request) {
       user = loggedInUser;
       console.log(`Authentifiziert als: ${user.email}`);
 
-      // Prüfe Admin/Testuser (bleibt gleich)
       if (user.email === TEST_USER_EMAIL || user.email === process.env.ADMIN_EMAIL) {
         hasAccess = true;
         console.log(`Zugriff gewährt: Spezieller User (${user.email}).`);
-        // Paket-ID für Admin/Testuser laden (bleibt gleich)
         if (promptPackageSlug) {
             const { data: pkgInfo, error: pkgErr } = await supabaseService
               .from('prompt_packages')
@@ -144,12 +168,9 @@ export async function POST(request) {
             console.error("Fehlender promptPackageSlug für Admin/Testuser bei generate/rephrase.");
             return NextResponse.json({ error: 'Prompt-Paket Slug fehlt.' }, { status: 400 });
         }
-
       } else {
-        // Normale Kaufprüfung für reguläre User (bleibt gleich)
         if (action !== 'refine' && promptPackageSlug) {
             console.log(`Prüfe Zugriff für User ${user.id} auf Paket ${promptPackageSlug}...`);
-            // Paket-ID laden (bleibt gleich)
             const { data: packageInfo, error: packageInfoError } = await supabaseService
               .from('prompt_packages')
               .select('id')
@@ -163,7 +184,6 @@ export async function POST(request) {
             packageId = packageInfo.id;
             console.log(`Paket-ID für Slug ${promptPackageSlug} ist ${packageId}. Prüfe user_purchases...`);
 
-            // Kaufprüfung (bleibt gleich)
             const { data: purchaseData, error: purchaseError } = await supabaseService
               .from('user_purchases')
               .select('id')
@@ -183,12 +203,9 @@ export async function POST(request) {
                return NextResponse.json({ error: 'Kein Zugriff auf dieses Prompt-Paket.' }, { status: 403 });
             }
             console.log(`Zugriff gewährt für User ${user.email} (ID: ${user.id}) auf Paket ${promptPackageSlug} (ID: ${packageId}).`);
-
         } else if (action === 'refine') {
-            // Refine ist für eingeloggte User generell erlaubt (bleibt gleich)
             hasAccess = true;
             console.log(`Zugriff für Refine-Aktion gewährt für User ${user.email}.`);
-            // Paket-ID für Refine-Kontext laden (bleibt gleich)
             if (promptPackageSlug) {
                  const { data: pkgInfo, error: pkgErr } = await supabaseService
                    .from('prompt_packages')
@@ -201,27 +218,24 @@ export async function POST(request) {
                  }
             }
         } else {
-            // Ungültige Anfrage (bleibt gleich)
             console.error("Ungültige Anfrage nach Authentifizierung (kein Slug für generate/rephrase):", body);
             return NextResponse.json({ error: 'Ungültige Anfrage nach Authentifizierung.' }, { status: 400 });
         }
       }
     }
-    // --- ENDE ANPASSUNG ---
 
-    // 3. OpenAI Prompt vorbereiten (bleibt gleich)
+    // 3. OpenAI Prompt vorbereiten
     if (hasAccess) {
       let systemPrompt = "";
       let userPrompt = "";
       let selectedVariantData = null;
 
-      // Vorbereitung für 'generate' und 'rephrase' (bleibt gleich)
       if (action === 'generate' || action === 'rephrase') {
+        // ... (Logik für generate/rephrase bleibt gleich wie vorher) ...
         if (!packageId || !variantId) {
              console.error("Interner Fehler: Fehlende packageId oder variantId für Variantenabfrage.");
              return NextResponse.json({ error: 'Interner Serverfehler: Paket- oder Varianten-ID fehlt.' }, { status: 500 });
         }
-
         console.log(`Lade Variante mit ID '${variantId}' für Paket-ID ${packageId}...`);
         const { data: variantData, error: variantError } = await supabaseService
           .from('prompt_variants')
@@ -229,7 +243,6 @@ export async function POST(request) {
           .eq('package_id', packageId)
           .eq('variant_id', variantId)
           .single();
-
         if (variantError || !variantData) {
             console.error(`Fehler beim Laden der Variante '${variantId}' für Paket ${packageId}:`, variantError?.message);
             if (variantError?.code === 'PGRST116') {
@@ -239,8 +252,6 @@ export async function POST(request) {
         }
         selectedVariantData = variantData;
         console.log(`Variante '${selectedVariantData.title || variantId}' erfolgreich geladen.`);
-
-        // System Prompt Konstruktion (bleibt gleich)
         systemPrompt = DEFAULT_SYSTEM_PROMPT;
         if (selectedVariantData.writing_instructions) {
             const wi = selectedVariantData.writing_instructions;
@@ -263,57 +274,48 @@ export async function POST(request) {
         } else {
              console.warn(`Variante ${variantId} für Paket ${packageId} hat kein 'context'-Objekt.`);
         }
-
-        // User-Ton nur bei 'rephrase' hinzufügen (bleibt gleich)
         if (action === 'rephrase' && tone && typeof tone === 'string' && tone.trim()) {
           const userToneInstruction = `\n\nAchte zusätzlich besonders auf folgenden vom Benutzer gewünschten Tonfall: "${tone.trim()}"`;
           systemPrompt += userToneInstruction;
           console.log(`Systemprompt (Rephrase) erweitert um User-Ton: "${tone.trim()}"`);
         }
-
-        // Systemprompt für 'rephrase' anpassen (bleibt gleich)
         if (action === 'rephrase') {
             systemPrompt += "\n\nFormuliere den Text basierend auf den Daten neu, behalte aber den Kerninhalt und den gewünschten Ton bei. Sei dabei kreativ.";
             console.log("Systemprompt für Rephrase angepasst.");
         }
-
-        // User Prompt Konstruktion (bleibt gleich)
         const dataForAI = JSON.stringify(placeholders, null, 2);
         userPrompt = `Generiere den Text basierend auf diesen Daten:\n\n${dataForAI}\n\nBeachte die Anweisungen im System-Prompt.`;
         console.log("User Prompt (Daten-basiert) erstellt.");
 
-      // Vorbereitung für 'refine' (bleibt gleich)
       } else if (action === 'refine') {
+        // Verwende den angepassten REFINE_SYSTEM_PROMPT
         systemPrompt = REFINE_SYSTEM_PROMPT;
-         // User-Ton hinzufügen (bleibt gleich)
          if (tone && typeof tone === 'string' && tone.trim()) {
            systemPrompt += `\n\nAchte bei der Überarbeitung besonders auf folgenden vom Benutzer gewünschten Tonfall: "${tone.trim()}"`;
            console.log(`Refine-Systemprompt erweitert um User-Ton: "${tone.trim()}"`);
          }
-        // User-Prompt für Refine (bleibt gleich)
         userPrompt = `Ursprünglicher Text:\n"""\n${originalText}\n"""\n\nZusätzliche Anweisungen/Informationen:\n"""\n${additionalInfo}\n"""\n\nBitte gib nur den überarbeiteten Text zurück.`;
         console.log("Systemprompt für Refine gesetzt/angepasst.");
 
       } else {
-        // Unbekannte Aktion (bleibt gleich)
         console.error("Unbekannte Aktion:", action);
         return NextResponse.json({ error: 'Unbekannte Aktion.' }, { status: 400 });
       }
 
-      // 4. OpenAI API aufrufen (bleibt gleich)
-      console.log(`Rufe OpenAI API für Aktion '${action}' auf...`);
+      // 4. OpenAI API aufrufen
+      console.log(`Rufe OpenAI API für Aktion '${action}' mit Temp ${finalTemperature}, MaxTokens ${finalMaxTokens} auf...`);
       const completion = await openai.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: DEFAULT_TEMPERATURE,
-        max_tokens: DEFAULT_MAX_TOKENS,
+        temperature: finalTemperature, // Verwende validierte/Standard-Temperatur
+        max_tokens: finalMaxTokens,   // Verwende validierte/Standard-MaxTokens
       });
 
-      // 5. Ergebnis extrahieren und zurückgeben (bleibt gleich)
-      const aiResponseContent = completion.choices?.[0]?.message?.content;
+      // 5. Ergebnis extrahieren und nachbearbeiten
+      let aiResponseContent = completion.choices?.[0]?.message?.content;
 
       if (!aiResponseContent) {
           console.error('Keine gültige Antwort von OpenAI erhalten:', completion);
@@ -321,28 +323,52 @@ export async function POST(request) {
       }
 
       console.log("Antwort von OpenAI erfolgreich erhalten.");
-      return NextResponse.json({ generatedText: aiResponseContent.trim() });
+
+      // --- IMPLEMENTIERUNG OPTION 2: Entferne führende/abschließende Sterne ---
+      // Diese Nachbearbeitung wird für alle Aktionen (generate, rephrase, refine) angewendet.
+      console.log("Original Antwort:", aiResponseContent); // Logge die Originalantwort
+      aiResponseContent = aiResponseContent.trim(); // Erst trimmen
+      // Entferne alle Sterne am Anfang
+      while (aiResponseContent.startsWith('*')) {
+          aiResponseContent = aiResponseContent.substring(1).trimStart(); // Entferne Stern und folgende Leerzeichen
+      }
+      // Entferne alle Sterne am Ende
+      while (aiResponseContent.endsWith('*')) {
+          aiResponseContent = aiResponseContent.substring(0, aiResponseContent.length - 1).trimEnd(); // Entferne Stern und vorherige Leerzeichen
+      }
+      console.log("Bereinigte Antwort:", aiResponseContent); // Logge die bereinigte Antwort
+      // --- ENDE IMPLEMENTIERUNG OPTION 2 ---
+
+      // Sende den (potenziell bereinigten) Text zurück
+      return NextResponse.json({ generatedText: aiResponseContent });
 
     } // Ende von if(hasAccess)
 
-    // Fallback, falls hasAccess aus irgendeinem Grund false ist
+    // Fallback
     console.error("Unerwarteter Zustand: Zugriff nicht erlaubt.");
     return NextResponse.json({ error: 'Zugriff nicht erlaubt oder unerwarteter Zustand.' }, { status: 403 });
 
   } catch (error) {
      // Allgemeine Fehlerbehandlung (bleibt gleich)
      console.error("Schwerwiegender Fehler in /api/generate:", error);
+     let errorMessage = 'Interner Serverfehler.';
+     let statusCode = 500;
+
      if (error.response && error.error) {
          console.error("OpenAI API Fehler Status:", error.status);
          console.error("OpenAI API Fehler Details:", error.error);
-         return NextResponse.json({ error: `OpenAI API Fehler: ${error.error?.message || 'Unbekannt'}` }, { status: error.status || 500 });
-     }
-     if (error instanceof SyntaxError) {
+         errorMessage = `OpenAI API Fehler: ${error.error?.message || 'Unbekannt'}`;
+         statusCode = error.status || 500;
+     } else if (error instanceof SyntaxError) {
          console.error("Fehler beim Parsen des Request Body:", error.message);
-         return NextResponse.json({ error: 'Ungültiges JSON im Request Body.' }, { status: 400 });
+         errorMessage = 'Ungültiges JSON im Request Body.';
+         statusCode = 400;
+     } else {
+         errorMessage = error.message || errorMessage;
      }
-     console.error("Fehlermeldung:", error.message);
+
+     console.error("Fehlermeldung:", errorMessage);
      console.error("Stack Trace:", error.stack);
-     return NextResponse.json({ error: `Interner Serverfehler: ${error.message}` }, { status: 500 });
+     return NextResponse.json({ error: errorMessage }, { status: statusCode });
   }
 }
