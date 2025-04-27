@@ -2,14 +2,12 @@
 
 // ======= Imports =======
 import { createClient } from '@/lib/supabase/server';
-// import Navigation from '@/components/Navigation'; // <-- ENTFERNEN
 // Korrekter Named Import für ProductCard
 import { ProductCard } from '@/components/store/ProductCard'; // Pfad prüfen!
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
 // Icons
 import { XCircle, LayoutGrid, ArrowLeft, ArrowDownUp, Check, ListFilter } from 'lucide-react';
-// import RevealOnScroll from '@/components/ui/RevealOnScroll'; // <-- Entfernt für den Test
 // Shadcn UI Komponenten für Dropdown
 import {
   DropdownMenu,
@@ -52,8 +50,6 @@ const createFilterUrl = (currentSearchParams, newParam) => {
 // ======= Hauptfunktion der Paketseite =======
 export default async function PaketePage({ searchParams }) {
   const supabase = createClient();
-  // User wird hier nicht mehr für Navigation gebraucht, aber vielleicht für andere Logik?
-  // const { data: { user } } = await supabase.auth.getUser(); // <-- Kann ggf. weg, wenn user hier nicht benötigt wird
 
   // --- Filter- und Sortierparameter auslesen ---
   const selectedCategory = searchParams?.kategorie;
@@ -68,7 +64,7 @@ export default async function PaketePage({ searchParams }) {
   ];
   const selectedSortOption = sortOptions.find(opt => opt.value === currentSort) || sortOptions[0];
 
-  // --- Kategorien abrufen (wichtig für das Dropdown) ---
+  // --- Kategorien abrufen (bleibt unverändert) ---
   const { data: categoriesData, error: categoriesError } = await supabase
     .from('prompt_packages')
     .select('category')
@@ -78,36 +74,37 @@ export default async function PaketePage({ searchParams }) {
   if (categoriesError) {
     console.error('Fehler beim Laden der Kategorien:', categoriesError.message);
   }
-  // Eindeutige Liste von Kategorienamen erstellen
   const availableCategories = categoriesData
     ? [...new Set(categoriesData.map(item => item.category).filter(Boolean))]
     : [];
 
-  // --- Angepasste Supabase-Abfrage mit Varianten ---
+  // --- ANGEPASSTE Supabase-Abfrage OHNE Kommentar im Select ---
   console.log(`Lade Pakete mit Sortierung: ${selectedSortOption.column} ${selectedSortOption.ascending ? 'ASC' : 'DESC'}`);
   const { data: allPromptPackages, error: packagesError } = await supabase
     .from('prompt_packages')
-    // Wähle alle Paket-Spalten (*) UND von den verknüpften Varianten nur Titel und ID
+    // Wähle die Spalten aus, die für die Übersichtskarte benötigt werden (inkl. Tags)
     .select(`
-      *,
-      prompt_variants (
-        variant_id,
-        title
-      )
-    `)
-    // Optional: Limitieren, falls es sehr viele Varianten pro Paket gibt
-    // .select(`*, prompt_variants!inner(variant_id, title, limit: 5)`)
+      id,
+      name,
+      slug,
+      description,
+      category,
+      price,
+      stripe_product_id,
+      stripe_price_id,
+      tags
+    `) // <-- Kommentar entfernt!
     .order(selectedSortOption.column, { ascending: selectedSortOption.ascending }); // Sortierung der Pakete
 
   if (packagesError) {
-    console.error('Fehler beim Laden der Textpakete inkl. Varianten:', packagesError.message);
+    // Gib den Fehler aus, damit er im Server-Log sichtbar ist
+    console.error('[PaketePage] Fehler beim Laden der Textpakete:', packagesError.message);
+    // Optional: Hier könntest du eine spezifischere Fehlermeldung für den Nutzer setzen
   } else {
-    console.log(`Erfolgreich ${allPromptPackages?.length || 0} Pakete geladen.`);
-    // Optional: Logge die Struktur des ersten Pakets, um die Varianten zu sehen
-    // if (allPromptPackages && allPromptPackages.length > 0) {
-    //   console.log("Struktur erstes Paket:", JSON.stringify(allPromptPackages[0], null, 2));
-    // }
+    console.log(`[PaketePage] Erfolgreich ${allPromptPackages?.length || 0} Pakete geladen.`);
   }
+  // --- ENDE ANGEPASSTE Abfrage ---
+
 
   // --- Filterung nach Kategorie (bleibt unverändert) ---
   const filteredPromptPackages = selectedCategory
@@ -122,19 +119,17 @@ export default async function PaketePage({ searchParams }) {
 
   // Seitenstruktur (JSX)
   return (
-    // Das äußere Fragment <> </> kann bleiben oder entfernt werden
     <>
-      {/* <Navigation user={user} /> */} {/* <-- ENTFERNEN */}
+      {/* Navigation wird vom Layout bereitgestellt */}
       <main className="flex-grow py-12 md:py-16 lg:py-20">
         <div className="container mx-auto px-4 md:px-6">
           <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-center mb-10 md:mb-16">
             {pageTitle}
           </h1>
 
-          {/* --- Filter- und Navigationsleiste --- */}
+          {/* --- Filter- und Navigationsleiste (unverändert) --- */}
           <div className="mb-8 flex flex-wrap justify-center items-center gap-4">
-
-            {/* --- NEU: Kategorie-Filter-Dropdown --- */}
+            {/* Kategorie-Filter-Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
@@ -142,17 +137,15 @@ export default async function PaketePage({ searchParams }) {
                   {selectedCategory ? `Kategorie: ${selectedCategory}` : 'Kategorie wählen'}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start"> {/* Ausrichtung ggf. anpassen */}
+              <DropdownMenuContent align="start">
                 <DropdownMenuLabel>Kategorie filtern</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {/* Option "Alle Kategorien" */}
                 <DropdownMenuItem asChild className={!selectedCategory ? 'bg-accent' : ''}>
                    <Link href={createFilterUrl(searchParams, { kategorie: null })} scroll={false} className="flex justify-between w-full">
                       Alle Kategorien
                       {!selectedCategory && <Check className="h-4 w-4 ml-2" />}
                    </Link>
                 </DropdownMenuItem>
-                {/* Verfügbare Kategorien auflisten */}
                 {availableCategories.map((category) => (
                   <DropdownMenuItem key={category} asChild className={selectedCategory === category ? 'bg-accent' : ''}>
                     <Link href={createFilterUrl(searchParams, { kategorie: category })} scroll={false} className="flex justify-between w-full">
@@ -163,10 +156,8 @@ export default async function PaketePage({ searchParams }) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            {/* --- ENDE Kategorie-Filter-Dropdown --- */}
 
-
-            {/* --- Sortier-Dropdown (bleibt unverändert) --- */}
+            {/* Sortier-Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
@@ -174,7 +165,7 @@ export default async function PaketePage({ searchParams }) {
                   Sortieren nach: {selectedSortOption.label}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end"> {/* Ausrichtung ggf. anpassen */}
+              <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Sortieren nach</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {sortOptions.map((option) => (
@@ -187,14 +178,16 @@ export default async function PaketePage({ searchParams }) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            {/* --- ENDE Sortier-Dropdown --- */}
-
           </div>
 
           {/* Fehlerbehandlung und Anzeige der Pakete */}
           {packagesError || categoriesError ? (
-            <p className="text-center text-red-500">
+            <p className="text-center text-destructive"> {/* Klasse geändert zu destructive */}
               Ups! Es gab ein Problem beim Laden der Inhalte. Bitte versuche es später erneut.
+              {/* Optional: Zeige die Fehlermeldung im Entwicklungsmodus */}
+              {process.env.NODE_ENV === 'development' && (
+                <span className="block text-xs mt-1">({packagesError?.message || categoriesError?.message})</span>
+              )}
             </p>
           ) : !filteredPromptPackages || filteredPromptPackages.length === 0 ? (
             <p className="text-center text-muted-foreground">
@@ -203,30 +196,16 @@ export default async function PaketePage({ searchParams }) {
                 : 'Momentan sind keine Textpakete verfügbar. Schau bald wieder vorbei!'}
             </p>
           ) : (
-            // <RevealOnScroll> <-- Entfernt für den Test
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {filteredPromptPackages.map((promptPackage) => (
-                  // Hier wird das Paket inkl. der geladenen Varianten übergeben
-                  <ProductCard key={promptPackage.id} prompt={promptPackage} />
-                ))}
-              </div>
-            // </RevealOnScroll> <-- Entfernt für den Test
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {filteredPromptPackages.map((promptPackage) => (
+                // ProductCard erhält jetzt die Basis-Paketdaten inkl. Tags
+                <ProductCard key={promptPackage.id} prompt={promptPackage} />
+              ))}
+            </div>
           )}
         </div>
       </main>
-
-      {/* <footer ...> */} {/* <-- ENTFERNEN */}
-      {/* <footer className="border-t py-8 bg-muted/40 mt-16">
-         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>© {new Date().getFullYear()} PromptHaus. Alle Rechte vorbehalten.</p>
-          <div className="mt-2">
-            <Link href="/impressum" className="hover:text-primary mx-2">Impressum</Link>
-            |
-            <Link href="/datenschutz" className="hover:text-primary mx-2">Datenschutz</Link>
-          </div>
-        </div>
-      </footer> */}
-      {/* --- ENDE ENTFERNEN --- */}
+      {/* Footer wird vom Layout bereitgestellt */}
     </>
   );
 }

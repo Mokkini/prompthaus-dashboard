@@ -1,4 +1,4 @@
-// components/PromptInteraction.js
+// components/PromptInteraction.js - ANGEPASST für einzelne Prompt-Daten
 "use client";
 
 import React from 'react';
@@ -18,14 +18,16 @@ import { cn } from "@/lib/utils";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose,
 } from "@/components/ui/dialog";
-import { usePromptInteraction } from '@/components/hooks/usePromptInteraction';
-import { DynamicFormRenderer } from '@/components/DynamicFormRenderer';
+import { usePromptInteraction } from '@/components/hooks/usePromptInteraction'; // Pfad prüfen!
+import { DynamicFormRenderer } from '@/components/DynamicFormRenderer'; // Pfad prüfen!
 
-export default function PromptInteraction({ variants, slug }) {
+// --- Nimmt jetzt promptData und slug entgegen ---
+export default function PromptInteraction({ promptData, slug }) {
+
   // Den Hook aufrufen und ALLE benötigten Werte/Funktionen extrahieren
   const {
     // States
-    selectedVariantId,
+    // selectedVariantId, // Entfernt
     semanticDataInfo,
     placeholderValues,
     selectedTone,
@@ -50,11 +52,11 @@ export default function PromptInteraction({ variants, slug }) {
     docxError,
 
     // Computed Values
-    currentVariant,
-    generationVariants,
+    // currentVariant, // Entfernt
+    // generationVariants, // Entfernt
 
     // Setters & Handlers
-    setSelectedVariantId,
+    // setSelectedVariantId, // Entfernt
     handleInputChange,
     handleToneInputChange,
     handleToneSuggestionClick,
@@ -64,9 +66,7 @@ export default function PromptInteraction({ variants, slug }) {
     handleRephrase,
     handleToggleRefineInput,
     handleRefine,
-    // --- NEU: Handler extrahieren ---
-    handleGetToThePoint,
-    // --- ENDE NEU ---
+    handleGetToThePoint, // Neuer Handler
     setShowEmailDialog,
     setRecipientEmail,
     handleSendEmail,
@@ -75,54 +75,29 @@ export default function PromptInteraction({ variants, slug }) {
     getNestedValue,
     toneSuggestions,
     setAdditionalInfo,
-  } = usePromptInteraction(variants, slug);
+    setShowToneSuggestions,
+  } = usePromptInteraction(promptData, slug); // <-- Hook mit promptData aufrufen
 
 
   return (
     <div className="w-full space-y-8">
-      {/* Variantenauswahl */}
-      {generationVariants.length > 1 && (
-        <div>
-          <div className="flex flex-wrap gap-3 justify-center px-2">
-            {generationVariants.map((variant) => (
-              <button
-                key={variant.id}
-                onClick={() => setSelectedVariantId(variant.id)}
-                disabled={loading || isRefining || isDownloadingDocx} // Auch während Download deaktivieren
-                className={cn(
-                  "w-full sm:w-[calc(50%-0.375rem)] md:w-[calc(33.33%-0.5rem)] lg:w-[calc(25%-0.5625rem)] xl:w-[calc(20%-0.6rem)]",
-                  "p-4 border rounded-lg text-left transition-all duration-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-                  variant.id === selectedVariantId
-                    ? "bg-primary/10 border-primary ring-2 ring-primary ring-offset-2 dark:bg-primary/20"
-                    : "bg-card border-muted-foreground hover:border-muted-foreground/50",
-                  (loading || isRefining || isDownloadingDocx) && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                <p className="font-medium text-sm">{variant.title || `Variante ${variant.id}`}</p>
-                {variant.description && (
-                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                    {variant.description}
-                  </p>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* --- Variantenauswahl ENTFERNT --- */}
+      {/* {generationVariants.length > 1 && ( ... )} */}
 
-      {/* Haupt-Grid */}
-      {currentVariant ? (
+      {/* Haupt-Grid (wird jetzt immer angezeigt, wenn promptData vorhanden ist) */}
+      {promptData ? ( // Prüfe, ob promptData übergeben wurde
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 px-2">
           {/* Linke Spalte: Eingabe */}
           <Card className="border-input">
              <CardHeader>
-               {currentVariant?.description && (
-                 <CardDescription className="text-center">{currentVariant.description}</CardDescription>
+               {/* Optional: Beschreibung des Pakets anzeigen */}
+               {promptData?.description && (
+                 <CardDescription className="text-center">{promptData.description}</CardDescription>
                )}
              </CardHeader>
              <CardContent className="space-y-6">
                <DynamicFormRenderer
-                 semanticDataInfo={semanticDataInfo}
+                 semanticDataInfo={semanticDataInfo} // Kommt jetzt direkt aus dem Hook
                  placeholderValues={placeholderValues}
                  handleInputChange={handleInputChange}
                  loading={loading}
@@ -135,7 +110,8 @@ export default function PromptInteraction({ variants, slug }) {
              <CardFooter>
                <Button
                  onClick={handleInitialGenerate}
-                 disabled={loading || isRefining || !selectedVariantId || isDownloadingDocx} // Auch während Download deaktivieren
+                 // selectedVariantId entfernt
+                 disabled={loading || isRefining || isDownloadingDocx}
                  className="w-full"
                >
                  {(loading && !isRefining) && (
@@ -151,10 +127,10 @@ export default function PromptInteraction({ variants, slug }) {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Generierter Text</CardTitle>
-                {/* --- Download-Button und Kopieren-Button --- */}
+                {/* Download-Button und Kopieren-Button (unverändert) */}
                 <div className="flex items-center gap-1">
                     {generatedText && !loading && !isRefining && (
-                        <div className="flex items-center gap-1"> {/* Gruppe für Button und Text */}
+                        <div className="flex items-center gap-1">
                             <Button
                                 variant="ghost"
                                 size="icon"
@@ -179,7 +155,7 @@ export default function PromptInteraction({ variants, slug }) {
                         variant="ghost"
                         size="icon"
                         onClick={handleCopy}
-                        disabled={isDownloadingDocx} // Auch während Download deaktivieren
+                        disabled={isDownloadingDocx}
                         title="Kopieren"
                       >
                         {isCopied ? (
@@ -191,11 +167,10 @@ export default function PromptInteraction({ variants, slug }) {
                       </Button>
                     )}
                 </div>
-                {/* --- Ende Download/Kopieren Buttons --- */}
               </div>
             </CardHeader>
             <CardContent className="flex-grow flex flex-col">
-              {/* --- DOCX Download Fehleranzeige --- */}
+              {/* DOCX Download Fehleranzeige (unverändert) */}
               {docxError && (
                 <Alert variant="destructive" className="mb-4">
                    <AlertCircle className="h-4 w-4" />
@@ -204,7 +179,7 @@ export default function PromptInteraction({ variants, slug }) {
                 </Alert>
               )}
 
-              {/* Fehleranzeige für Generierung/Refine */}
+              {/* Fehleranzeige für Generierung/Refine (unverändert) */}
               {errorMsg && (
                 <Alert variant="destructive" className="mb-4">
                    <AlertCircle className="h-4 w-4" />
@@ -213,7 +188,7 @@ export default function PromptInteraction({ variants, slug }) {
                 </Alert>
               )}
 
-              {/* Textarea oder Platzhalter */}
+              {/* Textarea oder Platzhalter (unverändert) */}
               {(generatedText || isRefining) && !loading ? (
                  <Textarea
                    readOnly
@@ -224,13 +199,13 @@ export default function PromptInteraction({ variants, slug }) {
                    )}
                    rows={Math.max(10, (generatedText || '').split('\n').length + 2)}
                  />
-               ) : !errorMsg && !loading && !docxError ? ( // Auch docxError berücksichtigen
+               ) : !errorMsg && !loading && !docxError ? (
                  <div className="p-4 bg-muted/50 rounded-md border border-dashed text-sm text-muted-foreground min-h-[250px] flex items-center justify-center flex-grow">
                    <em>(Generierter Text erscheint hier...)</em>
                  </div>
                ) : null}
 
-               {/* Ladeanzeige für Generierung */}
+               {/* Ladeanzeige für Generierung (unverändert) */}
                {loading && !isRefining && (
                  <div className="p-4 bg-muted/50 rounded-md border border-dashed text-sm text-muted-foreground min-h-[250px] flex items-center justify-center flex-grow">
                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -240,15 +215,16 @@ export default function PromptInteraction({ variants, slug }) {
 
             </CardContent>
 
-            {/* Footer für Aktionen */}
+            {/* Footer für Aktionen (unverändert, außer ID für Tone-Input) */}
             {generatedText && !loading && (
               <CardFooter className="flex flex-col items-start gap-4 pt-4 border-t">
                 {/* Tonalitäts-Input */}
                  <div className="w-full space-y-2 p-3 border rounded-md bg-muted/50">
-                   <Label htmlFor={`tone-${selectedVariantId}-adjust`}>Tonalität anpassen (optional):</Label>
+                   {/* ID vereinfacht */}
+                   <Label htmlFor={`tone-adjust-${slug}`}>Tonalität anpassen (optional):</Label>
                    <div className="relative" ref={toneInputRef}>
                      <Input
-                       id={`tone-${selectedVariantId}-adjust`}
+                       id={`tone-adjust-${slug}`} // <-- ID vereinfacht
                        value={selectedTone}
                        onChange={handleToneInputChange}
                        onFocus={() => {
@@ -258,7 +234,7 @@ export default function PromptInteraction({ variants, slug }) {
                        }}
                        placeholder="z.B. lockerer, formeller, witziger, kreativer..."
                        autoComplete="off"
-                       disabled={isRefining || isDownloadingDocx} // Auch während Download deaktivieren
+                       disabled={isRefining || isDownloadingDocx}
                      />
                      {showToneSuggestions && filteredTones.length > 0 && (
                        <Card className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
@@ -282,27 +258,23 @@ export default function PromptInteraction({ variants, slug }) {
                     </p>
                  </div>
 
-                 {/* Bereich für Rephrase/Refine Buttons */}
+                 {/* Bereich für Rephrase/Refine Buttons (unverändert) */}
                  <div className="flex flex-wrap gap-2 w-full">
                     <Button variant="secondary" size="sm" onClick={handleRephrase} disabled={isRefining || loading || isDownloadingDocx} className="flex items-center">
                       {isRefining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                       {isRefining ? 'Formuliere neu...' : 'Neu formulieren'}
                     </Button>
-
-                    {/* --- NEUER BUTTON --- */}
                     <Button variant="secondary" size="sm" onClick={handleGetToThePoint} disabled={isRefining || loading || isDownloadingDocx} className="flex items-center">
-                      {isRefining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />} {/* Optional: Icon */}
+                      {isRefining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
                       {isRefining ? 'Wird angepasst...' : 'Auf den Punkt kommen'}
                     </Button>
-                    {/* --- ENDE NEUER BUTTON --- */}
-
                     <Button variant="secondary" size="sm" onClick={handleToggleRefineInput} disabled={isRefining || loading || isDownloadingDocx} className="flex items-center">
                       <Info className="mr-2 h-4 w-4" />
                       {showRefineInput ? 'ausblenden' : 'Zusatzinfos'}
                     </Button>
                  </div>
 
-                 {/* Bedingter Bereich für Zusatzinfos-Eingabe */}
+                 {/* Bedingter Bereich für Zusatzinfos-Eingabe (unverändert) */}
                  {showRefineInput && (
                    <div className="w-full space-y-2 p-3 border rounded-md bg-muted/50">
                      <Label htmlFor="additionalInfo" className="text-sm font-medium">Zusätzliche Anweisungen oder Informationen:</Label>
@@ -322,8 +294,7 @@ export default function PromptInteraction({ variants, slug }) {
                    </div>
                  )}
 
-
-                {/* Bereich für Teilen-Buttons */}
+                {/* Bereich für Teilen-Buttons (unverändert, außer Titel für WebShare) */}
                 <div className="w-full pt-4 border-t">
                     <span className="text-sm font-medium block mb-2">Teilen via:</span>
                     <div className="flex flex-wrap gap-2">
@@ -334,7 +305,8 @@ export default function PromptInteraction({ variants, slug }) {
                          </a>
                        </Button>
                        <Button variant="outline" size="sm" asChild disabled={isDownloadingDocx}>
-                         <a href={`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}&title=${encodeURIComponent(currentVariant?.title || 'Generierter Text')}&summary=${encodeURIComponent(generatedText)}`} target="_blank" rel="noopener noreferrer" className="flex items-center">
+                         {/* Titel aus promptData nehmen */}
+                         <a href={`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}&title=${encodeURIComponent(promptData?.name || 'Generierter Text')}&summary=${encodeURIComponent(generatedText)}`} target="_blank" rel="noopener noreferrer" className="flex items-center">
                             <Linkedin className="h-4 w-4 mr-1" /> LinkedIn
                          </a>
                        </Button>
@@ -349,7 +321,7 @@ export default function PromptInteraction({ variants, slug }) {
                           </a>
                         </Button>
 
-                       {/* E-Mail Senden Button (Dialog) */}
+                       {/* E-Mail Senden Button (Dialog) (unverändert) */}
                        <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
                          <DialogTrigger asChild>
                            <Button variant="outline" size="sm" className="flex items-center" disabled={isDownloadingDocx}>
@@ -407,7 +379,7 @@ export default function PromptInteraction({ variants, slug }) {
                          </DialogContent>
                        </Dialog>
 
-                       {/* Web Share API Button */}
+                       {/* Web Share API Button (unverändert) */}
                        {canShare && (
                          <Button variant="outline" size="sm" onClick={handleWebShare} className="flex items-center" disabled={isDownloadingDocx}>
                            <Share2 className="h-4 w-4 mr-1" /> Mehr...
@@ -420,10 +392,9 @@ export default function PromptInteraction({ variants, slug }) {
           </Card>
         </div>
       ) : (
+         // Fallback, wenn promptData nicht vorhanden ist
          <p className="text-muted-foreground p-4 text-center">
-           {generationVariants.length === 0
-             ? "Keine Prompt-Varianten für dieses Paket gefunden."
-             : "Bitte wähle eine Variante aus."}
+           Fehler: Prompt-Daten konnten nicht geladen werden.
          </p>
       )}
     </div>

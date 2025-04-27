@@ -1,4 +1,4 @@
-// components/EditPromptForm.js - Mit Preis-Feld
+// components/EditPromptForm.js - Mit Tag-Bearbeitung
 
 "use client";
 
@@ -18,13 +18,30 @@ export default function EditPromptForm({ initialData }) {
   const [slug, setSlug] = useState(initialData?.promptPackage?.slug || '');
   const [description, setDescription] = useState(initialData?.promptPackage?.description || '');
   const [category, setCategory] = useState(initialData?.promptPackage?.category || '');
-  // --- NEU: State für Preis ---
-  const [price, setPrice] = useState(initialData?.promptPackage?.price?.toString() || ''); // Preis als String für Input
+  const [price, setPrice] = useState(initialData?.promptPackage?.price?.toString() || '');
 
-  // State für Varianten JSON
-  const [variantsJsonString, setVariantsJsonString] = useState(
-    initialData?.variants ? JSON.stringify({ generation_variants: initialData.variants }, null, 2) : '{\n  "generation_variants": []\n}'
-  );
+  // --- NEU: State für Tags ---
+  // Initialisiere mit dem Array aus der DB, umgewandelt in einen String
+  const [tagsString, setTagsString] = useState(() => {
+    const tagsArray = initialData?.promptPackage?.tags;
+    return Array.isArray(tagsArray) ? tagsArray.join(', ') : ''; // Mit Komma+Leerzeichen verbinden
+  });
+  // --- ENDE NEU ---
+
+  // State für Prompt-Daten JSON
+  const [promptDataJsonString, setPromptDataJsonString] = useState(() => {
+    const promptData = {
+      context: initialData?.promptPackage?.context || {},
+      semantic_data: initialData?.promptPackage?.semantic_data || {},
+      writing_instructions: initialData?.promptPackage?.writing_instructions || {}
+    };
+    try {
+      return JSON.stringify(promptData, null, 2);
+    } catch (e) {
+      console.error("Fehler beim Stringifizieren der initialen Prompt-Daten:", e);
+      return '{\n  "context": {},\n  "semantic_data": {},\n  "writing_instructions": {}\n}';
+    }
+  });
 
   // States für Feedback und Ladezustand
   const [message, setMessage] = useState('');
@@ -32,93 +49,38 @@ export default function EditPromptForm({ initialData }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [jsonError, setJsonError] = useState('');
 
-  // Struktur-Validierung (unverändert)
-  const validateStructure = (variantsArray) => {
-    try {
-      if (!Array.isArray(variantsArray)) {
-        throw new Error("Die 'generation_variants' müssen ein Array sein.");
-      }
-      const variantIds = new Set();
-      variantsArray.forEach((variant, index) => {
-        if (!variant || typeof variant !== 'object') throw new Error(`Variante ${index + 1} ist kein gültiges Objekt.`);
-        if (!variant.id || typeof variant.id !== 'string' || variant.id.trim() === '') throw new Error(`Variante ${index + 1}: Fehlende oder ungültige String 'id'.`);
-        if (variantIds.has(variant.id)) throw new Error(`Variante ${index + 1}: Die ID '${variant.id}' ist nicht eindeutig.`);
-        variantIds.add(variant.id);
-        if (!variant.title || typeof variant.title !== 'string') throw new Error(`Variante ${index + 1}: Fehlende oder ungültige 'title'.`);
-        if (!variant.description || typeof variant.description !== 'string') throw new Error(`Variante ${index + 1}: Fehlende oder ungültige 'description'.`);
-        if (!variant.context || typeof variant.context !== 'object') throw new Error(`Variante ${index + 1}: Fehlendes oder ungültiges 'context' Objekt.`);
-        if (!variant.semantic_data || typeof variant.semantic_data !== 'object') throw new Error(`Variante ${index + 1}: Fehlendes oder ungültiges 'semantic_data' Objekt.`);
-        if (!variant.writing_instructions || typeof variant.writing_instructions !== 'object') throw new Error(`Variante ${index + 1}: Fehlendes oder ungültiges 'writing_instructions' Objekt.`);
-      });
-      return { valid: true, error: null };
-    } catch (err) {
-      return { valid: false, error: `Strukturfehler: ${err.message}` };
-    }
-  };
-
-  // Effekt für initiale Validierung (unverändert)
-  useEffect(() => {
-    if (initialData?.variants) {
-      try {
-        const initialValidation = validateStructure(initialData.variants);
-        if (!initialValidation.valid) {
-          setJsonError(`Warnung: Die initial geladenen Daten haben eine ungültige Struktur: ${initialValidation.error}`);
-        }
-      } catch (e) {
-         setJsonError(`Warnung: Fehler beim Verarbeiten der initialen Daten: ${e.message}`);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Submit Handler (ANGEPASST: Preis-Validierung und Übergabe)
+  // Submit Handler (ANGEPASST für Tags)
   const handleSubmit = async (event) => {
     event.preventDefault();
     setJsonError('');
     setMessage('');
     setMessageType(null);
 
-    let parsedVariants;
-    let variantsArray;
+    let parsedPromptData;
 
     // 1. Syntax-Prüfung (JSON.parse)
     try {
-      parsedVariants = JSON.parse(variantsJsonString);
-      if (!parsedVariants || typeof parsedVariants !== 'object' || !parsedVariants.hasOwnProperty('generation_variants')) {
-          throw new Error("Das JSON muss ein Objekt mit einem Schlüssel 'generation_variants' sein.");
+      parsedPromptData = JSON.parse(promptDataJsonString);
+      if (typeof parsedPromptData !== 'object' || parsedPromptData === null ||
+          typeof parsedPromptData.context !== 'object' || parsedPromptData.context === null ||
+          typeof parsedPromptData.semantic_data !== 'object' || parsedPromptData.semantic_data === null ||
+          typeof parsedPromptData.writing_instructions !== 'object' || parsedPromptData.writing_instructions === null) {
+        throw new Error("Das JSON muss ein Objekt sein und context, semantic_data, writing_instructions enthalten.");
       }
-      variantsArray = parsedVariants.generation_variants;
     } catch (parseError) {
       setJsonError(`JSON Syntaxfehler: ${parseError.message}`);
-      setMessage(`Fehler: Das eingegebene JSON ist syntaktisch ungültig.`);
+      setMessage(`Fehler: Das eingegebene JSON ist syntaktisch ungültig oder hat nicht die erwartete Struktur.`);
       setMessageType('error');
       return;
     }
 
-    // 2. Struktur-Prüfung (validateStructure)
-    const structureValidation = validateStructure(variantsArray);
-    if (!structureValidation.valid) {
-      setJsonError(structureValidation.error);
-      setMessage(`Fehler: Die JSON-Struktur ist ungültig. ${structureValidation.error}`);
-      setMessageType('error');
-      return;
-    }
-
-    // 3. Prüfung auf leeres Array
-    if (!Array.isArray(variantsArray) || variantsArray.length === 0) {
-        setMessage(`Fehler: Das 'generation_variants'-Array darf nicht leer sein.`);
-        setMessageType('error');
-        return;
-    }
-
-    // --- NEU: 4. Preis-Validierung ---
+    // 2. Preis-Validierung
     const priceFloat = parseFloat(price);
     if (isNaN(priceFloat) || priceFloat < 0) {
         setMessage(`Fehler: Ungültiger Preis angegeben.`);
         setMessageType('error');
         return;
     }
-    // --- ENDE NEU ---
 
     // Wenn alle Prüfungen ok sind:
     setIsSubmitting(true);
@@ -128,15 +90,19 @@ export default function EditPromptForm({ initialData }) {
     formData.append('name', name);
     formData.append('description', description);
     formData.append('category', category);
-    formData.append('price', price); // <-- NEU: Preis übergeben
-    formData.append('variantsJson', JSON.stringify(parsedVariants, null, 2));
+    formData.append('price', price);
+    formData.append('promptDataJson', promptDataJsonString);
+    // --- NEU: Tags-String hinzufügen ---
+    formData.append('tags', tagsString); // Den String aus dem State übergeben
+    // --- ENDE NEU ---
 
-    const result = await updatePromptPackage(formData);
+    const result = await updatePromptPackage(formData); // Action-Aufruf
 
     if (result.success) {
       setMessage(result.message || 'Änderungen erfolgreich gespeichert.');
       setMessageType('success');
-      setVariantsJsonString(JSON.stringify(parsedVariants, null, 2));
+      // Optional: Tags-String neu setzen, falls die Action ihn ändert (unwahrscheinlich)
+      // setTagsString(Array.isArray(result.data?.tags) ? result.data.tags.join(', ') : '');
     } else {
       setMessage(result.message || 'Ein unbekannter Fehler ist aufgetreten.');
       setMessageType('error');
@@ -144,7 +110,7 @@ export default function EditPromptForm({ initialData }) {
     setIsSubmitting(false);
   };
 
-  // Initialisierungs-Check (unverändert)
+  // Initialisierungs-Check
   if (!initialData || !initialData.promptPackage) {
     return (
       <Alert variant="destructive">
@@ -157,20 +123,28 @@ export default function EditPromptForm({ initialData }) {
     );
   }
 
-  // JSX (ANGEPASST: Preis-Feld hinzugefügt)
+  const jsonPlaceholder = `{
+  "context": { ... },
+  "semantic_data": { ... },
+  "writing_instructions": { ... }
+}`;
+
+  // JSX (ANGEPASST: Tag-Feld hinzugefügt)
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Felder für name, slug, category, description */}
-       <div className="space-y-2">
+      {/* Paket-Name */}
+      <div className="space-y-2">
         <Label htmlFor="name">Paket-Name</Label>
         <Input type="text" id="name" name="name" required value={name} onChange={(e) => setName(e.target.value)} disabled={isSubmitting} />
       </div>
 
+      {/* Slug */}
       <div className="space-y-2">
         <Label htmlFor="slug">Slug (nicht änderbar)</Label>
         <Input type="text" id="slug" name="slug" readOnly value={slug} className="bg-muted border-muted cursor-not-allowed" />
       </div>
 
+      {/* Kategorie */}
       <div className="space-y-2">
         <Label htmlFor="category">Kategorie</Label>
         <Input type="text" id="category" name="category" required value={category} onChange={(e) => setCategory(e.target.value)} list="category-suggestions" disabled={isSubmitting} />
@@ -183,12 +157,13 @@ export default function EditPromptForm({ initialData }) {
         </datalist>
       </div>
 
+      {/* Beschreibung */}
       <div className="space-y-2">
         <Label htmlFor="description">Beschreibung</Label>
         <Textarea id="description" name="description" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} disabled={isSubmitting} />
       </div>
 
-      {/* --- NEU: PREIS FELD --- */}
+      {/* Preis */}
       <div className="space-y-2">
         <Label htmlFor="price">Preis (in Euro)</Label>
         <Input
@@ -199,25 +174,43 @@ export default function EditPromptForm({ initialData }) {
           step="0.01"
           min="0"
           placeholder="z.B. 9.99"
-          value={price} // State verwenden
-          onChange={(e) => setPrice(e.target.value)} // State aktualisieren
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
           disabled={isSubmitting}
         />
          <p className="text-sm text-muted-foreground">
-           Hinweis: Ändert den Preis in der Datenbank. Der verknüpfte Stripe-Preis wird *nicht* automatisch aktualisiert (Preise in Stripe sind meist unveränderlich).
+           Hinweis: Ändert den Preis in der Datenbank. Der verknüpfte Stripe-Preis wird *nicht* automatisch aktualisiert.
          </p>
       </div>
-      {/* --- ENDE PREIS FELD --- */}
 
-      {/* Varianten JSON Editor (Textarea) */}
+      {/* --- NEUES FELD FÜR TAGS --- */}
       <div className="space-y-2">
-        <Label htmlFor="variants-json-editor">Varianten (JSON)</Label>
+        <Label htmlFor="tags">Tags (mit Komma trennen)</Label>
+        <Input
+          type="text"
+          id="tags"
+          name="tags" // Wichtig für FormData
+          placeholder="z.B. TOP, E-Mail, Beruf, beliebt"
+          value={tagsString} // State verwenden
+          onChange={(e) => setTagsString(e.target.value)} // State aktualisieren
+          disabled={isSubmitting}
+        />
+        <p className="text-sm text-muted-foreground">
+          Einzelne Wörter oder kurze Phrasen, mit Komma getrennt. 'beliebt' wird speziell behandelt.
+        </p>
+      </div>
+      {/* --- ENDE NEUES FELD FÜR TAGS --- */}
+
+      {/* Prompt-Daten JSON Editor */}
+      <div className="space-y-2">
+        <Label htmlFor="promptDataJson">Prompt-Daten (als einzelnes JSON-Objekt)</Label>
         <Textarea
-          id="variants-json-editor"
-          value={variantsJsonString}
-          onChange={(e) => setVariantsJsonString(e.target.value)}
+          id="promptDataJson"
+          name="promptDataJson"
+          value={promptDataJsonString}
+          onChange={(e) => setPromptDataJsonString(e.target.value)}
           rows={20}
-          placeholder={'{\n  "generation_variants": [\n    {\n      "id": "...",\n      "title": "...",\n      ...\n    }\n  ]\n}'}
+          placeholder={jsonPlaceholder}
           className={cn(
             "font-mono text-sm",
             jsonError && "border-red-500 ring-1 ring-red-500"
@@ -225,12 +218,12 @@ export default function EditPromptForm({ initialData }) {
           disabled={isSubmitting}
         />
          <p className="text-sm text-muted-foreground">
-           Struktur pro Variante: {`{ "id": "...", "title": "...", "description": "...", "context": {...}, "semantic_data": {...}, "writing_instructions": {...} }`}
+           Struktur: {`{ "context": {...}, "semantic_data": {...}, "writing_instructions": {...} }`}
          </p>
         {jsonError && <p className="text-sm font-medium text-destructive">{jsonError}</p>}
       </div>
 
-      {/* Feedback Alert (unverändert) */}
+      {/* Feedback Alert */}
       {message && (
         <Alert variant={messageType === 'error' ? 'destructive' : 'default'} className={messageType === 'success' ? 'border-green-500 text-green-700 dark:text-green-300 dark:border-green-700 [&>svg]:text-green-700' : ''}>
           {messageType === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
@@ -239,7 +232,7 @@ export default function EditPromptForm({ initialData }) {
         </Alert>
       )}
 
-      {/* Button (unverändert) */}
+      {/* Button */}
       <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
         {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {isSubmitting ? 'Speichere...' : 'Änderungen speichern'}

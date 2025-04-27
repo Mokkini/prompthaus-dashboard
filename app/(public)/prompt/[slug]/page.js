@@ -1,17 +1,13 @@
 // app/(public)/prompt/[slug]/page.js
-"use client"; // <-- WICHTIG: Als Client Component markieren
+"use client"; // Bleibt Client Component
 
-import { createClient } from '@/lib/supabase/client'; // <-- Client-Import verwenden
-// --- NEU: useParams importieren ---
-import { notFound, useRouter, useParams } from 'next/navigation'; // useParams hinzugefügt
-// --- ENDE NEU ---
+import { createClient } from '@/lib/supabase/client'; // Client-Import
+import { notFound, useRouter, useParams } from 'next/navigation'; // useParams
 import PromptInteraction from '@/components/PromptInteraction';
-import React, { useState, useEffect } from 'react'; // useState, useEffect importieren
+import React, { useState, useEffect } from 'react'; // useState, useEffect
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Info, Loader2, AlertCircle } from 'lucide-react'; // Loader/Error Icons
-// --- Tooltip Import entfernt ---
-// import * as Tooltip from '@radix-ui/react-tooltip';
+import { ArrowLeft, Loader2, AlertCircle } from 'lucide-react'; // Icons
 import {
   Card,
   CardContent,
@@ -19,114 +15,100 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Alert für Fehler
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Alert
 
-const FREE_PROMPT_SLUG = 'testprompt';
+const FREE_PROMPT_SLUG = process.env.NEXT_PUBLIC_FREE_PROMPT_SLUG || 'testprompt'; // Verwende NEXT_PUBLIC_
 
-// --- KORREKTUR: params Prop entfernen, da wir useParams verwenden ---
-// export default function PromptDetailPage({ params }) {
 export default function PromptDetailPage() {
-  // --- NEU: useParams Hook verwenden ---
-  const params = useParams(); // Gibt ein Objekt zurück, z.B. { slug: 'testprompt' }
-  const slug = params.slug; // Jetzt sicher auf den Slug zugreifen
-  // --- ENDE NEU ---
-
+  const params = useParams();
+  const slug = params.slug;
   const isTestPrompt = slug === FREE_PROMPT_SLUG;
   const router = useRouter();
 
-  // --- Client-seitige States ---
-  const [promptPackage, setPromptPackage] = useState(null);
-  const [frontendVariants, setFrontendVariants] = useState([]);
+  // --- States angepasst ---
+  const [promptPackage, setPromptPackage] = useState(null); // Hält das gesamte Paket inkl. Prompt-Daten
+  // const [frontendVariants, setFrontendVariants] = useState([]); // Entfernt
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
 
-  // --- Datenabfrage im useEffect ---
+  // --- Datenabfrage im useEffect (ANGEPASST) ---
   useEffect(() => {
-    // Der Rest des useEffect bleibt gleich...
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
-      const supabase = createClient(); // Client-Instanz
+      setPromptPackage(null); // Zurücksetzen für neuen Ladevorgang
+      const supabase = createClient();
 
-      // 1. User holen
+      // 1. User holen (bleibt gleich)
       const { data: { user: userData }, error: userError } = await supabase.auth.getUser();
       setUser(userData);
 
       if (userError) {
         console.error("User fetch error:", userError);
-        // Fehlerbehandlung für User, falls nötig
       }
 
-      // Redirect, falls nicht eingeloggt und nicht Testprompt
+      // Redirect, falls nicht eingeloggt und nicht Testprompt (bleibt gleich)
       if (!userData && !isTestPrompt) {
-        router.replace( // Client-seitiger Redirect
+        router.replace(
           `/login?message=Bitte melde dich an, um diesen Prompt zu nutzen.&next=/prompt/${slug}`
         );
-        return; // Fetch abbrechen
+        return;
       }
 
       try {
-        // 2. Paket holen
+        // 2. Paket holen (inkl. Prompt-Daten)
         const { data: pkgData, error: pkgError } = await supabase
           .from('prompt_packages')
-          .select('id, name, description, category')
-          .eq('slug', slug) // slug aus useParams verwenden
+          // --- NEU: Lade alle benötigten Spalten ---
+          .select(`
+              id, name, slug, description, category, price,
+              context, semantic_data, writing_instructions
+          `)
+          .eq('slug', slug)
           .single();
 
         if (pkgError || !pkgData) {
-          throw new Error(pkgError?.message || 'Paket nicht gefunden.');
-        }
-        setPromptPackage(pkgData);
-        const packageId = pkgData.id;
-
-        // 3. Varianten holen
-        const { data: variantsData, error: variantsError } = await supabase
-          .from('prompt_variants')
-          .select(`
-            id,
-            variant_id,
-            title,
-            description,
-            context,
-            semantic_data,
-            writing_instructions
-          `)
-          .eq('package_id', packageId)
-          .order('title', { ascending: true });
-
-        if (variantsError) {
-          throw new Error(variantsError.message || 'Fehler beim Laden der Varianten.');
+          // Spezifischer Fehler für "nicht gefunden"
+          if (pkgError?.code === 'PGRST116') {
+              throw new Error('Prompt-Paket nicht gefunden.');
+          }
+          throw new Error(pkgError?.message || 'Fehler beim Laden des Pakets.');
         }
 
-        const mappedVariants = (variantsData || []).map((v) => ({
-          ...v,
-          id: v.variant_id,
-        }));
-        setFrontendVariants(mappedVariants);
+        // --- NEU: Prüfen, ob die essentiellen Prompt-Daten vorhanden sind ---
+        if (!pkgData.context || !pkgData.semantic_data || !pkgData.writing_instructions) {
+            console.error("Unvollständige Prompt-Daten im Paket:", pkgData.id);
+            throw new Error("Die Konfiguration für dieses Prompt-Paket ist unvollständig.");
+        }
+
+        setPromptPackage(pkgData); // Speichere das gesamte Paket
+
+        // 3. KEIN LADEN VON VARIANTEN MEHR!
 
       } catch (fetchError) {
         console.error("Data fetching error:", fetchError);
         setError(fetchError.message);
-        // Optional: notFound() hier aufrufen, wenn ein 404 gewünscht ist
-        // notFound();
+        // Wenn Paket nicht gefunden wurde, löse notFound aus
+        if (fetchError.message === 'Prompt-Paket nicht gefunden.') {
+            notFound(); // Zeigt die 404-Seite
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
-    // Sicherstellen, dass slug vorhanden ist, bevor fetchData aufgerufen wird
     if (slug) {
        fetchData();
     } else {
-       // Optional: Behandeln, wenn slug noch nicht verfügbar ist (sollte selten sein)
        console.warn("Slug ist noch nicht verfügbar im useEffect.");
-       // setIsLoading(false); // Oder einen Fehler setzen
+       setIsLoading(false); // Ladezustand beenden
+       notFound(); // Slug fehlt, also nicht gefunden
     }
 
-  }, [slug, isTestPrompt, router]); // Abhängigkeiten (slug kommt jetzt aus useParams)
+  }, [slug, isTestPrompt, router]); // Abhängigkeiten
 
-  // --- Ladezustand ---
+  // --- Ladezustand (bleibt gleich) ---
   if (isLoading) {
     return (
       <div className="container mx-auto py-20 flex justify-center items-center">
@@ -136,7 +118,7 @@ export default function PromptDetailPage() {
     );
   }
 
-  // --- Fehlerzustand (wenn Paket nicht geladen werden konnte) ---
+  // --- Fehlerzustand (wenn Paket nicht geladen werden konnte, aber nicht 404) ---
   if (error && !promptPackage) {
      return (
        <div className="container mx-auto py-20 px-4">
@@ -156,18 +138,15 @@ export default function PromptDetailPage() {
      );
   }
 
-   // --- Fallback für "Nicht gefunden" ---
-   // Prüfen, ob slug überhaupt existiert, bevor promptPackage geprüft wird
-   if (!slug || (!isLoading && !error && !promptPackage)) {
+   // --- Fallback für "Nicht gefunden" (sollte durch notFound() im useEffect abgedeckt sein) ---
+   if (!promptPackage) {
      notFound();
    }
 
   // --- Erfolgreiches Rendering ---
-  // Sicherstellen, dass promptPackage existiert, bevor auf name/description zugegriffen wird
-  const { name, description } = promptPackage || {};
+  const { name, description } = promptPackage; // Daten sind jetzt sicher vorhanden
 
   return (
-    // --- Tooltip.Provider entfernt ---
     <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <div className="mb-6">
         <Button variant="outline" size="sm" asChild>
@@ -185,8 +164,7 @@ export default function PromptDetailPage() {
 
       <Card className="rounded-none sm:rounded-lg border-x-0 sm:border-x">
         <CardHeader className="px-4 sm:px-6">
-          {/* Sicherstellen, dass name existiert */}
-          <CardTitle className="text-2xl">{name || 'Lade...'}</CardTitle>
+          <CardTitle className="text-2xl">{name}</CardTitle>
         </CardHeader>
 
         {description && (
@@ -196,32 +174,57 @@ export default function PromptDetailPage() {
         )}
 
         <CardContent className="pt-4 px-4 sm:px-6">
-          {/* Fehler beim Laden der Varianten anzeigen */}
-          {error && frontendVariants.length === 0 && (
+          {/* Fehleranzeige (falls z.B. Prompt-Daten unvollständig wären, wird jetzt im fetch abgefangen) */}
+          {error && (
              <Alert variant="destructive" className="mb-4">
                <AlertCircle className="h-4 w-4" />
-               <AlertTitle>Fehler beim Laden der Varianten</AlertTitle>
+               <AlertTitle>Fehler</AlertTitle>
                <AlertDescription>{error}</AlertDescription>
              </Alert>
           )}
 
-          {frontendVariants.length > 0 ? (
+          {/* --- PromptInteraction mit promptData aufrufen --- */}
+          {promptPackage ? (
             <PromptInteraction
-              variants={frontendVariants}
-              slug={slug} // slug aus useParams übergeben
-              isTestPrompt={isTestPrompt}
+              promptData={promptPackage} // <-- Das gesamte Paket übergeben
+              slug={slug}
+              // isTestPrompt wird nicht mehr benötigt, da die Logik im Hook ist
             />
           ) : (
-            // Nur anzeigen, wenn kein Fehler aufgetreten ist und nicht geladen wird
+            // Wird nur angezeigt, wenn kein Fehler, nicht geladen wird, aber Paket trotzdem null ist (sollte nicht passieren)
             !isLoading && !error && (
               <p className="text-center text-muted-foreground py-4">
-                Für dieses Paket sind aktuell keine Prompt-Varianten verfügbar.
+                Prompt-Daten konnten nicht geladen werden.
               </p>
             )
           )}
         </CardContent>
       </Card>
     </div>
-    // --- Tooltip.Provider entfernt ---
   );
 }
+
+// --- generateMetadata (optional, falls benötigt) ---
+// Diese Funktion muss angepasst werden, um die Daten serverseitig zu laden,
+// da sie vor dem Rendern der Client Component ausgeführt wird.
+// export async function generateMetadata({ params }) {
+//   const slug = params.slug;
+//   const supabase = createServerClient(); // Server-Client verwenden!
+//   const { data: pkgData } = await supabase
+//     .from('prompt_packages')
+//     .select('name, description')
+//     .eq('slug', slug)
+//     .single();
+
+//   if (!pkgData) {
+//     return {
+//       title: 'Prompt nicht gefunden',
+//     };
+//   }
+
+//   return {
+//     title: `${pkgData.name} | PromptHaus`,
+//     description: pkgData.description || `Nutze den Prompt ${pkgData.name} auf PromptHaus.`,
+//     // Weitere Metadaten...
+//   };
+// }

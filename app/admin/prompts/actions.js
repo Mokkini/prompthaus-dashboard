@@ -1,457 +1,286 @@
-// app/admin/prompts/actions.js - Mit Stripe-Update in updatePromptPackage
+// app/admin/prompts/actions.js - Mit Tag-Verarbeitung, getAdminPageData, getEditPageData und Debug-Logs
 
-"use server";
+'use server';
 
-import { createClient as createServerComponentClient } from '@/lib/supabase/server';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-import Stripe from 'stripe'; // Stripe importieren
+import { z } from 'zod';
 
-// --- Hilfsfunktion validateVariantsJson (unverändert) ---
-function validateVariantsJson(variantsJsonString) {
-  // ... (Code bleibt gleich) ...
-  let variantsData;
-  try {
-    const parsedJson = JSON.parse(variantsJsonString);
-    if (typeof parsedJson !== 'object' || parsedJson === null || !Array.isArray(parsedJson.generation_variants)) {
-        throw new Error("JSON muss ein Objekt mit einem 'generation_variants' Array sein.");
-    }
-    variantsData = parsedJson.generation_variants;
-    const variantIds = new Set();
-    variantsData.forEach((variant, index) => {
-       if (!variant || typeof variant !== 'object') {
-           throw new Error(`Variante ${index + 1} ist kein gültiges Objekt.`);
-       }
-       if (!variant.id || typeof variant.id !== 'string' || variant.id.trim() === '') {
-           throw new Error(`Variante ${index + 1}: Fehlende oder ungültige String 'id'. Muss ein nicht-leerer Text sein.`);
-       }
-       if (variantIds.has(variant.id)) {
-           throw new Error(`Variante ${index + 1}: Die ID '${variant.id}' ist nicht eindeutig innerhalb dieses Pakets.`);
-       }
-       variantIds.add(variant.id);
-       if (!variant.title || typeof variant.title !== 'string') throw new Error(`Variante ${index + 1}: Fehlende oder ungültige 'title'.`);
-       if (!variant.description || typeof variant.description !== 'string') throw new Error(`Variante ${index + 1}: Fehlende oder ungültige 'description'.`);
-       if (!variant.context || typeof variant.context !== 'object') throw new Error(`Variante ${index + 1}: Fehlendes oder ungültiges 'context' Objekt.`);
-       if (!variant.semantic_data || typeof variant.semantic_data !== 'object') throw new Error(`Variante ${index + 1}: Fehlendes oder ungültiges 'semantic_data' Objekt.`);
-       if (!variant.writing_instructions || typeof variant.writing_instructions !== 'object') throw new Error(`Variante ${index + 1}: Fehlendes oder ungültiges 'writing_instructions' Objekt.`);
-    });
-    return { success: true, data: variantsData };
-  } catch (e) {
-    console.error("[validateVariantsJson] JSON Validierungsfehler:", e.message);
-    return { success: false, message: `Fehler im Varianten JSON: ${e.message}` };
+// --- FUNKTION: getAdminPageData ---
+export async function getAdminPageData() {
+  const supabase = createClient();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    console.error("Fehler beim Holen des Benutzers oder nicht eingeloggt:", userError?.message);
+    return { success: false, error: 'Nicht eingeloggt.', user: null, prompts: [] };
   }
+  const { data: prompts, error: promptsError } = await supabase
+    .from('prompt_packages')
+    .select('*')
+    .order('name', { ascending: true });
+  if (promptsError) {
+    console.error("Fehler beim Laden der Prompt-Pakete:", promptsError.message);
+    return { success: false, error: `Fehler beim Laden der Pakete: ${promptsError.message}`, user: user, prompts: [] };
+  }
+  return { success: true, user: user, prompts: prompts || [] };
 }
 
-// --- addPromptPackage (unverändert von vorheriger Anpassung) ---
-export async function addPromptPackage(formData) {
-  // ... (Code bleibt gleich) ...
-  const supabaseUserClient = createServerComponentClient();
-  const { data: { user } } = await supabaseUserClient.auth.getUser();
-  if (!user || user.email !== process.env.ADMIN_EMAIL) {
-    return { success: false, message: 'Nicht autorisiert.' };
+// --- FUNKTION: getEditPageData ---
+export async function getEditPageData(packageId) {
+  if (!packageId) {
+    console.error("getEditPageData: Keine Paket-ID übergeben.");
+    return { success: false, error: 'Ungültige Anfrage: Paket-ID fehlt.', user: null, promptPackage: null };
   }
+  const supabase = createClient();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    console.error("Fehler beim Holen des Benutzers oder nicht eingeloggt:", userError?.message);
+    return { success: false, error: 'Nicht eingeloggt.', user: null, promptPackage: null };
+  }
+  console.log(`Versuche Paket mit ID ${packageId} für Bearbeitung zu laden...`);
+  const { data: promptPackage, error: packageError } = await supabase
+    .from('prompt_packages')
+    .select('*')
+    .eq('id', packageId)
+    .single();
+  if (packageError) {
+    console.error(`Fehler beim Laden des Pakets ${packageId}:`, packageError.message);
+    if (packageError.code === 'PGRST116') {
+         return { success: false, error: `Paket mit ID ${packageId} nicht gefunden.`, user: user, promptPackage: null };
+    }
+    return { success: false, error: `Fehler beim Laden des Pakets: ${packageError.message}`, user: user, promptPackage: null };
+  }
+  if (!promptPackage) {
+      console.warn(`Kein Paket mit ID ${packageId} gefunden (aber kein DB-Fehler).`);
+      return { success: false, error: `Paket mit ID ${packageId} nicht gefunden.`, user: user, promptPackage: null };
+  }
+  console.log(`Paket ${packageId} erfolgreich geladen.`);
+  return { success: true, user: user, promptPackage: promptPackage };
+}
+
+// --- Schemas (bleiben gleich) ---
+const PromptDataSchema = z.object({
+  context: z.object({}).passthrough(),
+  semantic_data: z.object({}).passthrough(),
+  writing_instructions: z.object({}).passthrough(),
+}).strict();
+
+const PromptPackageSchema = z.object({
+  name: z.string().min(3, "Name ist erforderlich."),
+  slug: z.string().regex(/^[a-z0-9-]+$/, "Slug darf nur Kleinbuchstaben, Zahlen und Bindestriche enthalten.").min(3, "Slug ist erforderlich."),
+  category: z.string().optional(),
+  description: z.string().optional(),
+  price: z.coerce.number().min(0, "Preis muss positiv sein."),
+  tags: z.string().optional(),
+  promptDataJson: z.string().min(1, "Prompt-Daten JSON ist erforderlich."),
+});
+
+// --- FUNKTION: addPromptPackage (bleibt gleich) ---
+export async function addPromptPackage(formData) {
+  const supabaseAdmin = createClient();
   const rawFormData = {
     name: formData.get('name'),
     slug: formData.get('slug'),
-    description: formData.get('description'),
     category: formData.get('category'),
+    description: formData.get('description'),
     price: formData.get('price'),
-    variantsJson: formData.get('variantsJson'),
+    tags: formData.get('tags'),
+    promptDataJson: formData.get('promptDataJson'),
   };
-  if (!rawFormData.name || !rawFormData.slug || !rawFormData.variantsJson || !rawFormData.category || !rawFormData.price) {
-    return { success: false, message: 'Bitte alle Pflichtfelder ausfüllen (Name, Slug, Kategorie, Preis, Varianten JSON).' };
+  const validatedFields = PromptPackageSchema.safeParse(rawFormData);
+  if (!validatedFields.success) {
+    console.error("Validierungsfehler (Paket):", validatedFields.error.flatten().fieldErrors);
+    return {
+      success: false,
+      message: "Validierungsfehler: " + Object.values(validatedFields.error.flatten().fieldErrors).flat().join(' '),
+    };
   }
-  const priceInEuro = parseFloat(rawFormData.price);
-  if (isNaN(priceInEuro) || priceInEuro < 0) {
-      return { success: false, message: 'Ungültiger Preis angegeben.' };
-  }
-  const priceInCents = Math.round(priceInEuro * 100);
-  const validationResult = validateVariantsJson(rawFormData.variantsJson);
-  if (!validationResult.success) {
-    return { success: false, message: validationResult.message };
-  }
-  const variantsArray = validationResult.data;
-  const supabaseAdmin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-  if (!process.env.STRIPE_SECRET_KEY) {
-      return { success: false, message: "Server-Konfigurationsfehler (Stripe)." };
-  }
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-  let newPackageId = null;
-  let stripeProductId = null;
-  let stripePriceId = null;
+  const { promptDataJson, tags: tagsString, ...packageData } = validatedFields.data;
+  let parsedPromptData;
   try {
-    const stripeProduct = await stripe.products.create({
-      name: rawFormData.name,
-      description: rawFormData.description || undefined,
-      metadata: { supabase_slug: rawFormData.slug, category: rawFormData.category }
-    });
-    stripeProductId = stripeProduct.id;
-    const stripePrice = await stripe.prices.create({
-      product: stripeProductId, unit_amount: priceInCents, currency: 'eur',
-    });
-    stripePriceId = stripePrice.id;
-    const { data: newPackage, error: insertPackageError } = await supabaseAdmin
-      .from('prompt_packages')
-      .insert({
-        name: rawFormData.name,
-        slug: rawFormData.slug.toLowerCase().replace(/\s+/g, '-'),
-        description: rawFormData.description,
-        category: rawFormData.category,
-        price: priceInEuro,
-        stripe_product_id: stripeProductId,
-        stripe_price_id: stripePriceId,
-      }).select('id').single();
-    if (insertPackageError) throw insertPackageError; // Weiterwerfen für Catch-Block
-    newPackageId = newPackage.id;
-    const variantsToInsert = variantsArray.map(variant => ({
-      package_id: newPackageId, variant_id: variant.id, title: variant.title,
-      description: variant.description, context: variant.context,
-      semantic_data: variant.semantic_data, writing_instructions: variant.writing_instructions,
-    }));
-    const { error: insertVariantsError } = await supabaseAdmin.from('prompt_variants').insert(variantsToInsert);
-    if (insertVariantsError) throw insertVariantsError; // Weiterwerfen
-    revalidatePath('/admin/prompts');
-    return { success: true, message: 'Prompt-Paket, Varianten und Stripe-Produkt/Preis erfolgreich erstellt!' };
-  } catch (error) {
-    console.error("[addPromptPackage] CATCH BLOCK - Fehler aufgetreten:", error.message);
-    if (newPackageId) { /* Rollback Supabase */
-        try {
-            await supabaseAdmin.from('prompt_variants').delete().eq('package_id', newPackageId);
-            await supabaseAdmin.from('prompt_packages').delete().eq('id', newPackageId);
-        } catch (rbErr) { console.error("Supabase Rollback Error:", rbErr); }
+    parsedPromptData = JSON.parse(promptDataJson);
+  } catch (e) {
+    console.error("JSON Parse Fehler:", e.message);
+    return { success: false, message: "Fehler im Prompt-Daten JSON: Ungültiges Format." };
+  }
+  const validatedPromptData = PromptDataSchema.safeParse(parsedPromptData);
+  if (!validatedPromptData.success) {
+    // ... (Fehlerbehandlung für Prompt-Daten bleibt gleich) ...
+    console.error("Validierungsfehler (Prompt-Daten):", validatedPromptData.error.flatten().fieldErrors);
+    const firstErrorPath = validatedPromptData.error.errors[0]?.path.join('.');
+    const firstErrorMessage = validatedPromptData.error.errors[0]?.message;
+    let userMessage = "Fehler in der Struktur der Prompt-Daten.";
+    if (firstErrorPath && firstErrorMessage) {
+        userMessage = `Fehler im Prompt-Daten JSON (${firstErrorPath}): ${firstErrorMessage}`;
+    } else if (firstErrorMessage) {
+         userMessage = `Fehler im Prompt-Daten JSON: ${firstErrorMessage}`;
+    } else if (validatedPromptData.error.message.includes("'context'")) {
+         userMessage = "Fehler im Prompt-Daten JSON: Das JSON muss ein 'context' Objekt enthalten.";
+    } else if (validatedPromptData.error.message.includes("'semantic_data'")) {
+         userMessage = "Fehler im Prompt-Daten JSON: Das JSON muss ein 'semantic_data' Objekt enthalten.";
+    } else if (validatedPromptData.error.message.includes("'writing_instructions'")) {
+         userMessage = "Fehler im Prompt-Daten JSON: Das JSON muss ein 'writing_instructions' Objekt enthalten.";
     }
-    if (stripeProductId) { /* Rollback Stripe */
-        try { await stripe.products.update(stripeProductId, { active: false }); }
-        catch (rbErr) { console.error("Stripe Rollback Error:", rbErr); }
-    }
-    const userMessage = error.code === '23505' && error.message.includes('slug')
-        ? `Fehler: Der Slug '${rawFormData.slug}' existiert bereits.`
-        : `Fehler: ${error.message}. Änderungen wurden rückgängig gemacht oder versucht.`;
     return { success: false, message: userMessage };
   }
+  const tagsArray = tagsString
+    ? tagsString.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
+    : [];
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('prompt_packages')
+      .insert([{ ...packageData, ...validatedPromptData.data, tags: tagsArray }])
+      .select().single();
+    if (error) {
+      console.error("Supabase Insert Fehler:", error);
+      if (error.code === '23505' && error.message.includes('prompt_packages_slug_key')) {
+          return { success: false, message: `Fehler: Der Slug "${packageData.slug}" existiert bereits. Bitte wähle einen anderen.` };
+      }
+      return { success: false, message: `Datenbankfehler: ${error.message}` };
+    }
+    console.log("Prompt-Paket erfolgreich hinzugefügt:", data);
+    revalidatePath('/admin/prompts');
+    revalidatePath('/pakete');
+    revalidatePath(`/pakete/${packageData.slug}`);
+    revalidatePath(`/checkout/${packageData.slug}`);
+    return { success: true, message: 'Prompt-Paket erfolgreich hinzugefügt.', data };
+  } catch (e) {
+    console.error("Unerwarteter Fehler in addPromptPackage:", e);
+    return { success: false, message: `Unerwarteter Serverfehler: ${e.message}` };
+  }
 }
 
+// --- FUNKTION: deletePromptPackage (bleibt gleich) ---
+export async function deletePromptPackage(id) {
+  const supabaseAdmin = createClient();
+  console.log(`Versuche Paket mit ID zu löschen: ${id}`);
+  try {
+    const { error } = await supabaseAdmin.from('prompt_packages').delete().match({ id: id });
+    if (error) {
+      console.error("Supabase Delete Fehler:", error);
+      return { error: `Datenbankfehler: ${error.message}` };
+    }
+    console.log(`Paket mit ID ${id} erfolgreich gelöscht.`);
+    revalidatePath('/admin/prompts');
+    revalidatePath('/pakete');
+    return { success: true };
+  } catch (e) {
+    console.error("Unerwarteter Fehler in deletePromptPackage:", e);
+    return { error: `Unerwarteter Serverfehler: ${e.message}` };
+  }
+}
 
-// --- updatePromptPackage (ANGEPASST mit Stripe-Update) ---
+// --- FUNKTION: updatePromptPackage (ANGEPASST für Tags + DEBUG LOGS) ---
 export async function updatePromptPackage(formData) {
-  const supabaseUserClient = createServerComponentClient();
+  const supabaseAdmin = createClient();
 
-  // 1. Admin-Prüfung (bleibt gleich)
-  const { data: { user } } = await supabaseUserClient.auth.getUser();
-  if (!user || user.email !== process.env.ADMIN_EMAIL) {
-    console.error("[updatePromptPackage] Nicht-Admin versuchte, Prompt zu aktualisieren.");
-    return { success: false, message: 'Nicht autorisiert.' };
-  }
+  // 1. Daten extrahieren (inkl. ID, JSON-String UND Tags-String)
+  const packageId = formData.get('packageId');
+  // --- DEBUG LOG: Empfangene ID ---
+  console.log('[updatePromptPackage] Empfangene packageId:', packageId);
+  // --- ENDE DEBUG LOG ---
+  const name = formData.get('name');
+  const description = formData.get('description');
+  const category = formData.get('category');
+  const price = formData.get('price');
+  const promptDataJson = formData.get('promptDataJson');
+  const tagsString = formData.get('tags');
 
-  // 2. Formulardaten extrahieren (Preis hinzugefügt)
-  const rawFormData = {
-    packageId: formData.get('packageId'),
-    name: formData.get('name'),
-    description: formData.get('description'),
-    category: formData.get('category'),
-    price: formData.get('price'), // <-- NEU
-    variantsJson: formData.get('variantsJson'),
-  };
-
-  // 3. Grundlegende Validierung (Preis hinzugefügt)
-  if (!rawFormData.packageId || !rawFormData.name || !rawFormData.variantsJson || !rawFormData.category || !rawFormData.price) { // Preis hinzugefügt
-    console.error("[updatePromptPackage] Validation failed: Missing required fields.");
-    return { success: false, message: 'Fehlende Daten (Paket-ID, Name, Kategorie, Preis, Varianten JSON sind erforderlich).' };
-  }
-
-  // --- NEU: Preis validieren ---
-  const priceInEuro = parseFloat(rawFormData.price);
-  if (isNaN(priceInEuro) || priceInEuro < 0) {
-      console.error("[updatePromptPackage] Validation failed: Invalid price.");
-      return { success: false, message: 'Ungültiger Preis angegeben.' };
-  }
-  // --- ENDE NEU ---
-
-  // 4. JSON Validierung (bleibt gleich)
-  const validationResult = validateVariantsJson(rawFormData.variantsJson);
-  if (!validationResult.success) {
-    console.error("[updatePromptPackage] JSON validation failed:", validationResult.message);
-    return { success: false, message: validationResult.message };
-  }
-  const newVariantsArray = validationResult.data;
-
-  // 5. Admin Client initialisieren (bleibt gleich)
-  const supabaseAdmin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-
-  // --- NEU: Stripe Client initialisieren ---
-  if (!process.env.STRIPE_SECRET_KEY) {
-      console.error("[updatePromptPackage] Server-Konfigurationsfehler: STRIPE_SECRET_KEY fehlt.");
-      return { success: false, message: "Server-Konfigurationsfehler (Stripe)." };
-  }
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-  // --- ENDE NEU ---
-
-  // --- Update-Logik (ERWEITERT mit Stripe) ---
-  try {
-    // --- NEU: 6. Hole Stripe Produkt ID aus DB ---
-    const { data: packageData, error: fetchError } = await supabaseAdmin
-        .from('prompt_packages')
-        .select('stripe_product_id, slug') // Slug auch holen für Revalidierung
-        .eq('id', rawFormData.packageId)
-        .single();
-
-    if (fetchError || !packageData) {
-        console.error("[updatePromptPackage] Fehler beim Holen der Stripe Produkt ID:", fetchError);
-        throw new Error(`Konnte Paketdaten nicht laden: ${fetchError?.message || 'Paket nicht gefunden.'}`);
-    }
-    const stripeProductId = packageData.stripe_product_id;
-    const currentSlug = packageData.slug; // Slug für Revalidierung speichern
-    // --- ENDE NEU ---
-
-    // --- NEU: 7. Aktualisiere Produkt in Stripe (Name, Beschreibung, Metadaten) ---
-    if (stripeProductId) {
-        console.log(`[updatePromptPackage] Aktualisiere Stripe Produkt ${stripeProductId}...`);
-        try {
-            await stripe.products.update(stripeProductId, {
-                name: rawFormData.name,
-                description: rawFormData.description || undefined,
-                metadata: { // Metadaten auch aktualisieren
-                    supabase_slug: currentSlug, // Slug bleibt gleich
-                    category: rawFormData.category,
-                }
-            });
-            console.log(`[updatePromptPackage] Stripe Produkt ${stripeProductId} aktualisiert.`);
-        } catch (stripeError) {
-            // Fehler beim Stripe-Update ist nicht unbedingt kritisch, loggen und weitermachen
-            console.warn(`[updatePromptPackage] Warnung: Fehler beim Aktualisieren von Stripe Produkt ${stripeProductId}:`, stripeError.message);
-            // Hier KEINEN Fehler werfen, damit Supabase trotzdem aktualisiert wird.
-        }
-    } else {
-        console.warn(`[updatePromptPackage] Warnung: Keine Stripe Produkt ID für Paket ${rawFormData.packageId} gefunden. Stripe wird nicht aktualisiert.`);
-    }
-    // --- ENDE NEU ---
-
-    // 8. Paket-Metadaten in prompt_packages aktualisieren (Preis hinzugefügt)
-    console.log(`[updatePromptPackage] Aktualisiere Supabase Paket ${rawFormData.packageId}...`);
-    const { error: updatePackageError } = await supabaseAdmin
-      .from('prompt_packages')
-      .update({
-        name: rawFormData.name,
-        description: rawFormData.description,
-        category: rawFormData.category,
-        price: priceInEuro, // <-- NEU: Preis aktualisieren
-      })
-      .eq('id', rawFormData.packageId);
-
-    if (updatePackageError) {
-      console.error("[updatePromptPackage] DB Update Fehler (Paket):", updatePackageError);
-      throw new Error(`Datenbankfehler beim Aktualisieren des Pakets: ${updatePackageError.message}`);
-    }
-    console.log(`[updatePromptPackage] Supabase Paket ${rawFormData.packageId} aktualisiert.`);
-
-    // 9. Alte Varianten löschen (bleibt gleich)
-    console.log(`[updatePromptPackage] Lösche alte Varianten für Paket ${rawFormData.packageId}...`);
-    const { error: deleteVariantsError } = await supabaseAdmin
-      .from('prompt_variants')
-      .delete()
-      .eq('package_id', rawFormData.packageId);
-
-    if (deleteVariantsError) {
-      console.error("[updatePromptPackage] DB Delete Fehler (Alte Varianten):", deleteVariantsError);
-      throw new Error(`Fehler beim Löschen alter Varianten: ${deleteVariantsError.message}. Paket ist inkonsistent!`);
-    }
-    console.log(`[updatePromptPackage] Alte Varianten gelöscht.`);
-
-    // 10. Neue Varianten einfügen (bleibt gleich)
-    const variantsToInsert = newVariantsArray.map(variant => ({
-      package_id: rawFormData.packageId, variant_id: variant.id, title: variant.title,
-      description: variant.description, context: variant.context,
-      semantic_data: variant.semantic_data, writing_instructions: variant.writing_instructions,
-    }));
-
-    if (variantsToInsert.length > 0) {
-        console.log(`[updatePromptPackage] Füge ${variantsToInsert.length} neue Varianten ein...`);
-        const { error: insertVariantsError } = await supabaseAdmin
-          .from('prompt_variants')
-          .insert(variantsToInsert);
-
-        if (insertVariantsError) {
-          console.error("[updatePromptPackage] DB Insert Fehler (Neue Varianten):", insertVariantsError);
-          throw new Error(`Fehler beim Einfügen der neuen Varianten: ${insertVariantsError.message}. Paket ist inkonsistent!`);
-        }
-        console.log(`[updatePromptPackage] Neue Varianten eingefügt.`);
-    } else {
-        console.log(`[updatePromptPackage] Keine neuen Varianten zum Einfügen.`);
-    }
-
-    // 11. Cache neu validieren (bleibt gleich, verwendet currentSlug)
-    revalidatePath('/admin/prompts');
-    revalidatePath(`/admin/prompts/edit/${rawFormData.packageId}`);
-    if (currentSlug) {
-        revalidatePath(`/prompt/${currentSlug}`);
-    }
-    console.log(`[updatePromptPackage] Cache revalidiert.`);
-
-    // 12. Erfolgsmeldung zurückgeben
-    return { success: true, message: 'Prompt-Paket erfolgreich aktualisiert!' };
-
-  } catch (error) {
-     // Fehlerbehandlung (bleibt gleich)
-     console.error("[updatePromptPackage] CATCH BLOCK - Fehler beim Aktualisieren des Pakets/Varianten:", error.message);
-     return { success: false, message: `Fehler: ${error.message}. Das Paket ist möglicherweise in einem inkonsistenten Zustand!` };
-  }
-}
-
-
-// --- deletePromptPackage (ANGEPASST mit Stripe Deaktivierung) ---
-export async function deletePromptPackage(packageId) {
-  const supabaseUserClient = createServerComponentClient();
-
-  // 1. Admin-Prüfung (bleibt gleich)
-  const { data: { user } } = await supabaseUserClient.auth.getUser();
-  if (!user || user.email !== process.env.ADMIN_EMAIL) {
-    return { success: false, message: 'Aktion fehlgeschlagen.' };
-  }
-
-  // 2. ID-Prüfung (bleibt gleich)
+  // 2. ID-Prüfung
   if (!packageId) {
-    return { success: false, message: 'Fehlende Paket-ID zum Löschen.' };
+    // --- DEBUG LOG: Fehlende ID ---
+    console.error('[updatePromptPackage] Fehler: packageId fehlt im FormData.');
+    // --- ENDE DEBUG LOG ---
+    return { success: false, message: "Fehler: Paket-ID fehlt." };
   }
 
-  // 3. Admin Client initialisieren (bleibt gleich)
-  const supabaseAdmin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-
-  // --- NEU: Stripe Client initialisieren ---
-  if (!process.env.STRIPE_SECRET_KEY) {
-      console.error("[deletePromptPackage] Server-Konfigurationsfehler: STRIPE_SECRET_KEY fehlt.");
-      // Fehler zurückgeben, da wir Stripe deaktivieren wollen
-      return { success: false, message: "Server-Konfigurationsfehler (Stripe)." };
-  }
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-  // --- ENDE NEU ---
-
-  // --- Löschen (ERWEITERT mit Stripe Deaktivierung) ---
+  // 3. JSON parsen und validieren
+  let parsedPromptData;
   try {
-    // --- NEU: 4. Hole Stripe Produkt ID aus DB ---
-    const { data: packageData, error: fetchError } = await supabaseAdmin
-        .from('prompt_packages')
-        .select('stripe_product_id')
-        .eq('id', packageId)
-        .single();
-
-    // Fehler beim Holen ist nicht kritisch für das Löschen in Supabase, aber loggen
-    if (fetchError) {
-        console.warn(`[deletePromptPackage] Warnung: Konnte Stripe Produkt ID für Paket ${packageId} nicht holen:`, fetchError.message);
+    parsedPromptData = JSON.parse(promptDataJson);
+    if (typeof parsedPromptData !== 'object' || parsedPromptData === null ||
+        typeof parsedPromptData.context !== 'object' || parsedPromptData.context === null ||
+        typeof parsedPromptData.semantic_data !== 'object' || parsedPromptData.semantic_data === null ||
+        typeof parsedPromptData.writing_instructions !== 'object' || parsedPromptData.writing_instructions === null) {
+      throw new Error("JSON hat nicht die erwartete Grundstruktur (context, semantic_data, writing_instructions).");
     }
-    const stripeProductId = packageData?.stripe_product_id;
-    // --- ENDE NEU ---
-
-    // 5. Varianten aus prompt_variants löschen (bleibt gleich)
-    const { error: deleteVariantsError } = await supabaseAdmin
-      .from('prompt_variants')
-      .delete()
-      .eq('package_id', packageId);
-    if (deleteVariantsError) throw deleteVariantsError; // Weiterwerfen
-
-    // 6. Paket aus prompt_packages löschen (bleibt gleich)
-    const { error: deletePackageError } = await supabaseAdmin
-      .from('prompt_packages')
-      .delete()
-      .eq('id', packageId);
-    if (deletePackageError) throw deletePackageError; // Weiterwerfen
-
-    // --- NEU: 7. Stripe Produkt deaktivieren (falls ID vorhanden) ---
-    if (stripeProductId) {
-        console.log(`[deletePromptPackage] Deaktiviere Stripe Produkt ${stripeProductId}...`);
-        try {
-            await stripe.products.update(stripeProductId, { active: false });
-            console.log(`[deletePromptPackage] Stripe Produkt ${stripeProductId} deaktiviert.`);
-        } catch (stripeError) {
-            // Fehler beim Deaktivieren ist nicht kritisch für den Rest, aber loggen
-            console.warn(`[deletePromptPackage] Warnung: Fehler beim Deaktivieren von Stripe Produkt ${stripeProductId}:`, stripeError.message);
-        }
-    } else {
-        console.log(`[deletePromptPackage] Keine Stripe Produkt ID für Paket ${packageId} gefunden. Überspringe Stripe-Deaktivierung.`);
-    }
-    // --- ENDE NEU ---
-
-    // 8. Cache neu validieren (bleibt gleich)
-    revalidatePath('/admin/prompts');
-
-    // 9. Erfolgsmeldung zurückgeben
-    return { success: true, message: 'Prompt-Paket erfolgreich gelöscht (und Stripe Produkt deaktiviert, falls vorhanden)!' };
-
-  } catch (error) {
-      // Fehlerbehandlung (bleibt gleich)
-      console.error("[deletePromptPackage] CATCH BLOCK - Fehler beim Löschen:", error.message);
-      return { success: false, message: `Fehler: ${error.message}` };
+  } catch (e) {
+    console.error("JSON Parse/Struktur Fehler beim Update:", e.message);
+    return { success: false, message: `Fehler im Prompt-Daten JSON: ${e.message}` };
   }
-}
 
+  // 4. Preis validieren
+  const priceFloat = parseFloat(price);
+  if (isNaN(priceFloat) || priceFloat < 0) {
+    return { success: false, message: "Fehler: Ungültiger Preis angegeben." };
+  }
 
-// --- getAdminPageData (unverändert) ---
-export async function getAdminPageData() {
-  // ... (Code bleibt gleich) ...
-  'use server';
-  const supabaseUserClient = createServerComponentClient();
-  const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser();
-  if (userError) { return { success: false, error: 'Authentifizierungsfehler.', user: null, prompts: [] }; }
-  if (!user) { return { success: false, error: 'Nicht eingeloggt.', user: null, prompts: [] }; }
-  const isAdmin = user.email === process.env.ADMIN_EMAIL;
-  if (!isAdmin) { return { success: false, error: 'Nicht autorisiert.', user: user, prompts: [] }; }
-  const supabaseAdmin = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-  const { data: prompts, error: promptsError } = await supabaseAdmin
-    .from('prompt_packages').select('id, slug, name, category')
-    .order('category', { ascending: true, nullsFirst: false }).order('name', { ascending: true });
-  if (promptsError) { return { success: false, error: `Fehler beim Laden der Prompts: ${promptsError.message}`, user: user, prompts: [] }; }
-  return { success: true, user: user, prompts: prompts || [], error: null };
-}
+  // Tags-String verarbeiten
+  const tagsArray = tagsString
+    ? tagsString.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
+    : [];
 
-// --- getEditPageData (ANGEPASST: Preis hinzugefügt) ---
-export async function getEditPageData(packageId) {
-    'use server';
-    const supabaseUserClient = createServerComponentClient();
-    const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser();
-    if (userError) { return { success: false, error: 'Authentifizierungsfehler.', promptPackage: null, variants: [] }; }
-    if (!user) { return { success: false, error: 'Nicht eingeloggt.', promptPackage: null, variants: [] }; }
-    if (user.email !== process.env.ADMIN_EMAIL) { return { success: false, error: 'Nicht autorisiert.', promptPackage: null, variants: [] }; }
-    if (!packageId) { return { success: false, error: 'Keine Paket-ID angegeben.', promptPackage: null, variants: [] }; }
+   // 5. Daten in der Datenbank aktualisieren (inkl. Tags)
+    try {
+      // --- DEBUG LOG: Vor DB-Aufruf ---
+      console.log(`[updatePromptPackage] Versuche Update für ID: ${packageId}`);
+      // --- ENDE DEBUG LOG ---
 
-    const supabaseAdmin = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-    // Paket-Metadaten laden (Preis hinzugefügt)
-    const { data: promptPackage, error: packageError } = await supabaseAdmin
+      /* // --- TEMPORÄR VEREINFACHTES UPDATE (AUSKOMMENTIERT) ---
+      const { data, error } = await supabaseAdmin
         .from('prompt_packages')
-        .select('id, name, slug, description, category, price') // <-- Preis hinzugefügt
-        .eq('id', packageId)
+        .update({
+          // Nur den Namen aktualisieren, um andere Datenquellen auszuschließen
+          name: name + ' (Test Update)'
+        })
+        .match({ id: packageId }) // Wichtig: Nur den Datensatz mit der passenden ID ändern
+        .select()
+        .single(); // Hier tritt der Fehler auf, wenn match fehlschlägt
+      // --- ENDE TEMPORÄR VEREINFACHTES UPDATE --- */
+
+      // Originales Update (wieder aktiviert):
+      const { data, error } = await supabaseAdmin
+        .from('prompt_packages')
+        .update({
+          name: name,
+          description: description,
+          category: category,
+          price: priceFloat,
+          context: parsedPromptData.context,
+          semantic_data: parsedPromptData.semantic_data,
+          writing_instructions: parsedPromptData.writing_instructions,
+          tags: tagsArray,
+        })
+        .match({ id: packageId })
+        .select()
         .single();
 
-    if (packageError || !promptPackage) {
-        const errorMsg = packageError?.code === 'PGRST116' ? 'Paket nicht gefunden.' : `Fehler beim Laden des Pakets: ${packageError?.message || 'Unbekannt'}`;
-        return { success: false, error: errorMsg, promptPackage: null, variants: [] };
+
+    if (error) {
+      console.error("Supabase Update Fehler:", error);
+      // Der Fehler "JSON object requested, multiple (or no) rows returned" hat oft den Code PGRST116
+      if (error.code === 'PGRST116') {
+          return { success: false, message: `Datenbankfehler beim Update: Paket mit ID ${packageId} nicht gefunden oder Bedingung nicht eindeutig.` };
+      }
+      return { success: false, message: `Datenbankfehler beim Update: ${error.message}` };
     }
 
-    // Zugehörige Varianten laden (unverändert)
-    const { data: variants, error: variantsError } = await supabaseAdmin
-        .from('prompt_variants')
-        .select('variant_id, title, description, context, semantic_data, writing_instructions')
-        .eq('package_id', packageId)
-        .order('title', { ascending: true });
+    console.log("Prompt-Paket erfolgreich aktualisiert:", data);
 
-    if (variantsError) {
-        return { success: false, error: `Fehler beim Laden der Varianten: ${variantsError.message}`, promptPackage: promptPackage, variants: [] };
+    // 6. Cache Revalidierung
+    revalidatePath('/admin/prompts');
+    revalidatePath('/pakete');
+    if (data?.slug) { // Slug aus der Antwort nehmen, falls vorhanden
+      revalidatePath(`/pakete/${data.slug}`);
+      revalidatePath(`/checkout/${data.slug}`);
     }
 
-    // Varianten für JSON vorbereiten (unverändert)
-    const variantsForJson = (variants || []).map(v => ({
-        id: v.variant_id, title: v.title, description: v.description,
-        context: v.context, semantic_data: v.semantic_data, writing_instructions: v.writing_instructions
-    }));
+    return { success: true, message: 'Änderungen erfolgreich gespeichert.', data };
 
-    // Erfolgreich: Paketdaten (inkl. Preis) und Varianten zurückgeben
-    return { success: true, promptPackage: promptPackage, variants: variantsForJson, error: null };
+  } catch (e) {
+    // --- DEBUG LOG: Unerwarteter Fehler ---
+    console.error("[updatePromptPackage] Unerwarteter Fehler im try-catch:", e);
+    // --- ENDE DEBUG LOG ---
+    return { success: false, message: `Unerwarteter Serverfehler: ${e.message}` };
+  }
 }
