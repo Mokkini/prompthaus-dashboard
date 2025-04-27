@@ -194,7 +194,7 @@ Erstelle eigenständig einen **herausragenden deutschen Text**, der die Vorgaben
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Oder "gpt-4o-mini", "gpt-3.5-turbo" etc.
+      model: "gpt-3.5-turbo", // Oder "gpt-4o-mini", "gpt-3.5-turbo" etc.
       messages: [
         { role: "system", content: systemPrompt }, // Die Rolle des Assistenten
         { role: "user", content: userMessage },   // Die spezifischen Daten für diesen Aufruf
@@ -325,7 +325,7 @@ export async function refineText(payload) {
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Oder "gpt-4o-mini", "gpt-3.5-turbo" etc.
+      model: "gpt-3.5-turbo", // Oder "gpt-4o-mini", "gpt-3.5-turbo" etc.
       messages: [{ role: "system", content: systemPrompt }],
       // --- HIER SIND ALLE STEUERUNGSPARAMETER ---
       temperature: 0.7,       // Etwas niedriger für Refine, um fokussierter zu bleiben.
