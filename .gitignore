@@ -46,3 +46,7 @@ next-env.d.ts
 app/(internal)/chat/
 # Interne Chat API-Route ignorieren
 app/api/chat/
+# Interne API-Routen und Verzeichnisse ignorieren
+/app/(internal)/validate-json/
+# Internen JSON Validator API-Route ignorieren
+/app/api/validate-json/route.js
