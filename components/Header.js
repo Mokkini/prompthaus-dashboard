@@ -13,10 +13,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { User, LogOut, Menu, Home } from 'lucide-react';
-import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
-import DashboardNav from './DashboardNav';
-import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/server'; // Wird für die Server Action benötigt
+import { redirect } from 'next/navigation'; // Wird für die Server Action benötigt
+import DashboardNav from './DashboardNav'; // Wird im Sheet verwendet
+import { cn } from '@/lib/utils'; // Für Klassen-Kombinationen
 
 // Die Komponente akzeptiert jetzt den 'user' als Prop
 export default function Header({ user }) {

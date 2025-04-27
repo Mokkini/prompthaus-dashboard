@@ -5,7 +5,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { login } from '../actions';
+import { login } from '@/app/auth/actions';
 
 // Shadcn UI Komponenten
 import { Button } from "@/components/ui/button";

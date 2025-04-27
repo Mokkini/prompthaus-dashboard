@@ -2,7 +2,7 @@
 'use client'; // Diese Komponente läuft im Browser
 
 import { useState, useTransition } from 'react';
-import { updatePassword } from '@/app/actions'; // Importiere die Server Action
+import { updatePassword } from '@/app/auth/actions'; // Importiere die Server Action
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

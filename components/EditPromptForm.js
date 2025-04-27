@@ -1,40 +1,38 @@
-// components/EditPromptForm.js - Zurück zu Textarea
+// components/EditPromptForm.js - Mit Preis-Feld
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { updatePromptPackage } from '@/app/admin/prompts/actions'; // Pfad prüfen!
+import { useState, useEffect } from 'react';
+import { updatePromptPackage } from '@/app/admin/prompts/actions'; // Korrekter Import
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea"; // Standard Textarea
+import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-// --- JSONInput und locale entfernt ---
 
 export default function EditPromptForm({ initialData }) {
+  // States für die Paket-Metadaten
   const [name, setName] = useState(initialData?.promptPackage?.name || '');
   const [slug, setSlug] = useState(initialData?.promptPackage?.slug || '');
   const [description, setDescription] = useState(initialData?.promptPackage?.description || '');
   const [category, setCategory] = useState(initialData?.promptPackage?.category || '');
+  // --- NEU: State für Preis ---
+  const [price, setPrice] = useState(initialData?.promptPackage?.price?.toString() || ''); // Preis als String für Input
 
-  // --- Nur noch der JSON-String im State ---
+  // State für Varianten JSON
   const [variantsJsonString, setVariantsJsonString] = useState(
-    // Initialisiere mit formatiertem JSON oder leerem String
     initialData?.variants ? JSON.stringify({ generation_variants: initialData.variants }, null, 2) : '{\n  "generation_variants": []\n}'
   );
 
+  // States für Feedback und Ladezustand
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // --- jsonError State bleibt für Fehler beim Submit ---
   const [jsonError, setJsonError] = useState('');
 
-  // --- Debounce Ref wird nicht mehr benötigt ---
-  // const debounceTimeoutRef = useRef(null);
-
-  // --- Struktur-Validierung (bleibt für Submit-Prüfung) ---
+  // Struktur-Validierung (unverändert)
   const validateStructure = (variantsArray) => {
     try {
       if (!Array.isArray(variantsArray)) {
@@ -58,34 +56,25 @@ export default function EditPromptForm({ initialData }) {
     }
   };
 
-  // --- handleEditorChange wird nicht mehr benötigt ---
-
-  // --- useEffect für Timeout Cleanup wird nicht mehr benötigt ---
-
-  // --- useEffect für initiale Validierung (kann entfernt oder angepasst werden) ---
-  // Da wir keine Live-Validierung mehr haben, ist dieser Effekt weniger kritisch.
-  // Man könnte ihn lassen, um *beim Laden* einen Fehler anzuzeigen, falls die initialen Daten ungültig sind.
+  // Effekt für initiale Validierung (unverändert)
   useEffect(() => {
     if (initialData?.variants) {
       try {
-        // Nur Struktur prüfen, Syntax wird durch stringify sichergestellt
         const initialValidation = validateStructure(initialData.variants);
         if (!initialValidation.valid) {
           setJsonError(`Warnung: Die initial geladenen Daten haben eine ungültige Struktur: ${initialValidation.error}`);
-          // Optional: messageType auf 'warning' setzen
         }
       } catch (e) {
-         // Sollte durch stringify nicht passieren, aber sicher ist sicher
          setJsonError(`Warnung: Fehler beim Verarbeiten der initialen Daten: ${e.message}`);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Nur einmal beim Mounten
+  }, []);
 
-  // --- Submit Handler (ANGEPASST: Validierung hier) ---
+  // Submit Handler (ANGEPASST: Preis-Validierung und Übergabe)
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setJsonError(''); // Fehler vor jeder Prüfung zurücksetzen
+    setJsonError('');
     setMessage('');
     setMessageType(null);
 
@@ -95,11 +84,10 @@ export default function EditPromptForm({ initialData }) {
     // 1. Syntax-Prüfung (JSON.parse)
     try {
       parsedVariants = JSON.parse(variantsJsonString);
-      // Prüfen, ob das Top-Level-Objekt 'generation_variants' enthält
       if (!parsedVariants || typeof parsedVariants !== 'object' || !parsedVariants.hasOwnProperty('generation_variants')) {
           throw new Error("Das JSON muss ein Objekt mit einem Schlüssel 'generation_variants' sein.");
       }
-      variantsArray = parsedVariants.generation_variants; // Array extrahieren
+      variantsArray = parsedVariants.generation_variants;
     } catch (parseError) {
       setJsonError(`JSON Syntaxfehler: ${parseError.message}`);
       setMessage(`Fehler: Das eingegebene JSON ist syntaktisch ungültig.`);
@@ -116,12 +104,21 @@ export default function EditPromptForm({ initialData }) {
       return;
     }
 
-    // 3. Prüfung auf leeres Array (optional, je nach Anforderung)
+    // 3. Prüfung auf leeres Array
     if (!Array.isArray(variantsArray) || variantsArray.length === 0) {
         setMessage(`Fehler: Das 'generation_variants'-Array darf nicht leer sein.`);
         setMessageType('error');
         return;
     }
+
+    // --- NEU: 4. Preis-Validierung ---
+    const priceFloat = parseFloat(price);
+    if (isNaN(priceFloat) || priceFloat < 0) {
+        setMessage(`Fehler: Ungültiger Preis angegeben.`);
+        setMessageType('error');
+        return;
+    }
+    // --- ENDE NEU ---
 
     // Wenn alle Prüfungen ok sind:
     setIsSubmitting(true);
@@ -131,7 +128,7 @@ export default function EditPromptForm({ initialData }) {
     formData.append('name', name);
     formData.append('description', description);
     formData.append('category', category);
-    // Sende den validierten und geparsten String (optional neu formatiert)
+    formData.append('price', price); // <-- NEU: Preis übergeben
     formData.append('variantsJson', JSON.stringify(parsedVariants, null, 2));
 
     const result = await updatePromptPackage(formData);
@@ -139,7 +136,6 @@ export default function EditPromptForm({ initialData }) {
     if (result.success) {
       setMessage(result.message || 'Änderungen erfolgreich gespeichert.');
       setMessageType('success');
-      // Optional: Den State mit dem erfolgreich gespeicherten, formatierten JSON aktualisieren
       setVariantsJsonString(JSON.stringify(parsedVariants, null, 2));
     } else {
       setMessage(result.message || 'Ein unbekannter Fehler ist aufgetreten.');
@@ -148,7 +144,7 @@ export default function EditPromptForm({ initialData }) {
     setIsSubmitting(false);
   };
 
-  // --- Initialisierungs-Check (unverändert) ---
+  // Initialisierungs-Check (unverändert)
   if (!initialData || !initialData.promptPackage) {
     return (
       <Alert variant="destructive">
@@ -161,10 +157,10 @@ export default function EditPromptForm({ initialData }) {
     );
   }
 
-  // --- JSX (ANGEPASST: Textarea statt JSONInput) ---
+  // JSX (ANGEPASST: Preis-Feld hinzugefügt)
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* ... (Felder für name, slug, category, description bleiben gleich) ... */}
+      {/* Felder für name, slug, category, description */}
        <div className="space-y-2">
         <Label htmlFor="name">Paket-Name</Label>
         <Input type="text" id="name" name="name" required value={name} onChange={(e) => setName(e.target.value)} disabled={isSubmitting} />
@@ -192,30 +188,47 @@ export default function EditPromptForm({ initialData }) {
         <Textarea id="description" name="description" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} disabled={isSubmitting} />
       </div>
 
+      {/* --- NEU: PREIS FELD --- */}
+      <div className="space-y-2">
+        <Label htmlFor="price">Preis (in Euro)</Label>
+        <Input
+          type="number"
+          id="price"
+          name="price"
+          required
+          step="0.01"
+          min="0"
+          placeholder="z.B. 9.99"
+          value={price} // State verwenden
+          onChange={(e) => setPrice(e.target.value)} // State aktualisieren
+          disabled={isSubmitting}
+        />
+         <p className="text-sm text-muted-foreground">
+           Hinweis: Ändert den Preis in der Datenbank. Der verknüpfte Stripe-Preis wird *nicht* automatisch aktualisiert (Preise in Stripe sind meist unveränderlich).
+         </p>
+      </div>
+      {/* --- ENDE PREIS FELD --- */}
 
-      {/* --- Varianten JSON Editor (jetzt Textarea) --- */}
+      {/* Varianten JSON Editor (Textarea) */}
       <div className="space-y-2">
         <Label htmlFor="variants-json-editor">Varianten (JSON)</Label>
-        {/* Standard Textarea verwenden */}
         <Textarea
           id="variants-json-editor"
           value={variantsJsonString}
           onChange={(e) => setVariantsJsonString(e.target.value)}
-          rows={20} // Höhe anpassen nach Bedarf
+          rows={20}
           placeholder={'{\n  "generation_variants": [\n    {\n      "id": "...",\n      "title": "...",\n      ...\n    }\n  ]\n}'}
           className={cn(
-            "font-mono text-sm", // Monospace für bessere Lesbarkeit
-            jsonError && "border-red-500 ring-1 ring-red-500" // Fehlerhervorhebung
+            "font-mono text-sm",
+            jsonError && "border-red-500 ring-1 ring-red-500"
           )}
           disabled={isSubmitting}
         />
          <p className="text-sm text-muted-foreground">
            Struktur pro Variante: {`{ "id": "...", "title": "...", "description": "...", "context": {...}, "semantic_data": {...}, "writing_instructions": {...} }`}
          </p>
-        {/* Fehlermeldung wird jetzt hauptsächlich beim Submit relevant */}
         {jsonError && <p className="text-sm font-medium text-destructive">{jsonError}</p>}
       </div>
-      {/* --- ENDE JSON Editor --- */}
 
       {/* Feedback Alert (unverändert) */}
       {message && (
@@ -226,7 +239,7 @@ export default function EditPromptForm({ initialData }) {
         </Alert>
       )}
 
-      {/* Button (unverändert, Logik für disabled bleibt) */}
+      {/* Button (unverändert) */}
       <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
         {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {isSubmitting ? 'Speichere...' : 'Änderungen speichern'}

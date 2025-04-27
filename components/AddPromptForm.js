@@ -4,8 +4,7 @@
 
 import { useState } from 'react';
 // --- KORREKTER IMPORT: Die neue Action importieren ---
-// Passe den Pfad an, falls deine actions.js woanders liegt
-import { createProductWithStripe } from '@/app/actions'; // <-- GEÄNDERT
+import { addPromptPackage } from '@/app/admin/prompts/actions'; // <-- NEU (Funktion heißt jetzt addPromptPackage in der neuen Datei)
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +29,8 @@ export default function AddPromptForm() {
     formData.set('variantsJson', variantsJson);
 
     // --- KORREKTER AUFRUF: Die NEUE Action verwenden ---
-    const result = await createProductWithStripe(formData); // <-- GEÄNDERT
+    // Die Funktion in app/admin/prompts/actions.js heißt jetzt addPromptPackage
+    const result = await addPromptPackage(formData); // <-- GEÄNDERT
 
     if (result.success) {
       setMessage(result.message || 'Paket erfolgreich hinzugefügt.');
@@ -126,24 +126,22 @@ export default function AddPromptForm() {
         <Textarea id="description" name="description" rows={3} disabled={isSubmitting} />
       </div>
 
-      {/* --- NEUES FELD: Preis --- */}
+      {/* --- PREIS FELD (Hinweis entfernt) --- */}
       <div className="space-y-2">
         <Label htmlFor="price">Preis (in Euro)</Label>
         <Input
           type="number"
           id="price"
           name="price"
-          required
+          required // Jetzt wieder erforderlich!
           step="0.01" // Erlaubt Cent-Beträge
           min="0"      // Kein negativer Preis
-          placeholder="z.B. 9.99"
+          placeholder="z.B. 9.99" // Platzhalter angepasst
           disabled={isSubmitting}
         />
-        <p className="text-sm text-muted-foreground">
-          Gib den Preis in Euro an (z.B. 4.50). Dieser wird für Supabase und Stripe verwendet.
-        </p>
+        {/* Die <p> mit dem Hinweis wurde entfernt */}
       </div>
-      {/* --- ENDE NEUES FELD --- */}
+      {/* --- ENDE PREIS FELD --- */}
 
       {/* Varianten JSON Textarea */}
       <div className="space-y-2">

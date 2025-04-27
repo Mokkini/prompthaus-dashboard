@@ -3,7 +3,7 @@
 
 import { useState, useTransition } from 'react';
 // Die Server Action importieren
-import { deletePromptPackage } from '@/app/admin/prompts/actions'; // Pfad ggf. anpassen
+import { deletePromptPackage } from '@/app/admin/prompts/actions'; // <-- Dieser Pfad ist bereits korrekt!
 // shadcn/ui Komponenten importieren
 import { Button } from "@/components/ui/button";
 import {

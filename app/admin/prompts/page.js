@@ -7,12 +7,9 @@ import Link from 'next/link';
 import React from 'react';
 
 // Importiere die Server Actions
-// WICHTIG: Stelle sicher, dass der Pfad zu deiner Haupt-actions.js korrekt ist!
-// Wenn actions.js direkt unter app/ liegt:
-import { getAdminPageData, logout } from '@/app/actions';
-// Wenn actions.js unter app/admin/ liegt (wie vorher):
-// import { getAdminPageData, logout } from '../actions'; // Beispiel für relativen Pfad
-// import { getAdminPageData, logout } from '@/app/admin/actions'; // Beispiel für Alias
+// --- KORREKTER IMPORT ---
+// import { getAdminPageData, logout } from '@/app/actions'; // <-- ALT
+import { getAdminPageData } from '@/app/admin/prompts/actions'; // <-- NEU (logout entfernt)
 
 // Importiere UI Komponenten
 import AddPromptForm from '@/components/AddPromptForm';
@@ -44,7 +41,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 // Icons
-import { AlertCircle, ExternalLink, Pencil, PlusCircle, Loader2, LogOut } from "lucide-react";
+import { AlertCircle, ExternalLink, Pencil, PlusCircle, Loader2, LogOut } from "lucide-react"; // LogOut wird nicht mehr direkt benötigt
 import { Separator } from "@/components/ui/separator";
 
 // Hilfsfunktion zum Gruppieren (bleibt gleich)

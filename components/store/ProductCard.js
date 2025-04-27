@@ -84,13 +84,24 @@ export function ProductCard({ prompt }) {
           </div>
         )}
 
-        {displayPrice && (
-          <p className="text-xl font-bold text-primary mt-auto pt-4">
-            {displayPrice}
-          </p>
-        )}
-        {!displayPrice && variants.length > 0 && <div className="mt-auto"></div>}
-
+         {/* --- PREIS ANZEIGE --- */}
+         <div className="mt-auto pt-4"> {/* Wrapper für Preis und MwSt.-Hinweis */}
+          {displayPrice && (
+            <> {/* Fragment, um mehrere Elemente zu gruppieren */}
+              <p className="text-xl font-bold text-primary">
+                {displayPrice}
+              </p>
+              {/* --- NEU: MwSt.-Hinweis --- */}
+              <p className="text-xs text-muted-foreground mt-0.5">
+                inkl. MwSt.
+              </p>
+              {/* --- ENDE NEU --- */}
+            </>
+          )}
+          {/* Fallback, falls kein Preis aber Varianten da sind */}
+          {!displayPrice && variants.length > 0 && <div className="mt-auto"></div>}
+        </div>
+        {/* --- ENDE PREIS ANZEIGE --- */}
       </CardContent>
 
       <CardFooter className="pt-0 pb-4">

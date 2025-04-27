@@ -5,7 +5,8 @@ import { redirect } from 'next/navigation';      // redirect importieren
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { LogOut, Home } from 'lucide-react';
-import { logout } from '@/app/actions'; // Importiere die Logout-Action
+import { logout } from '@/app/auth/actions'; // Importiere die Logout-Action <-- NEU & KORREKT
+
 
 // Layout wird async, um Daten zu holen und Admin zu prüfen
 export default async function AdminLayout({ children }) {
