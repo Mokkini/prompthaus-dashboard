@@ -126,7 +126,7 @@ export default function PromptInteraction({ promptData, slug }) {
           <Card className="flex flex-col border-input">
             <CardHeader>
               <div className="flex justify-between items-center">
-                <CardTitle>Generierter Text</CardTitle>
+                <CardTitle>Dein Textbereich</CardTitle>
                 {/* Download-Button und Kopieren-Button (unverändert) */}
                 <div className="flex items-center gap-1">
                     {generatedText && !loading && !isRefining && (
@@ -201,7 +201,7 @@ export default function PromptInteraction({ promptData, slug }) {
                  />
                ) : !errorMsg && !loading && !docxError ? (
                  <div className="p-4 bg-muted/50 rounded-md border border-dashed text-sm text-muted-foreground min-h-[250px] flex items-center justify-center flex-grow">
-                   <em>(Generierter Text erscheint hier...)</em>
+                   <em>(Hier erscheint dein Text...)</em>
                  </div>
                ) : null}
 
@@ -221,7 +221,7 @@ export default function PromptInteraction({ promptData, slug }) {
                 {/* Tonalitäts-Input */}
                  <div className="w-full space-y-2 p-3 border rounded-md bg-muted/50">
                    {/* ID vereinfacht */}
-                   <Label htmlFor={`tone-adjust-${slug}`}>Tonalität anpassen (optional):</Label>
+                   <Label htmlFor={`tone-adjust-${slug}`}>Stil anpassen:</Label>
                    <div className="relative" ref={toneInputRef}>
                      <Input
                        id={`tone-adjust-${slug}`} // <-- ID vereinfacht
@@ -254,7 +254,7 @@ export default function PromptInteraction({ promptData, slug }) {
                      )}
                    </div>
                     <p className="text-xs text-muted-foreground">
-                      Gib hier einen Ton an, wenn du den generierten Text mit den Buttons unten anpassen möchtest.
+                    Nicht der passende Stil? Einfach beschreiben, wie der Text klingen soll, und neu formulieren lassen.
                     </p>
                  </div>
 

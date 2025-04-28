@@ -75,10 +75,10 @@ export function DynamicFormRenderer({
           // --- 'object'-Case ist redundant ---
           /* case 'object': return null; */
 
-          // --- NEU: Case für 'select' ---
+          // --- NEU: Case für 'select' (KORRIGIERT) ---
           case 'select':
             // Stelle sicher, dass 'options' ein Array ist, sonst leeres Array verwenden
-            const selectOptions = Array.isArray(options) ? options : []; // 'options' direkt verwenden
+            const selectOptions = Array.isArray(options) ? options : [];
             return (
               <div key={stateKey} className="space-y-1.5">
                 <Label htmlFor={stateKey}>{label} {isRequiredMarker ? '*' : ''}</Label>
@@ -94,11 +94,16 @@ export function DynamicFormRenderer({
                   <option value="" disabled>
                     {placeholder || 'Bitte wählen...'}
                   </option>
-                  {selectOptions.map((optionValue) => (
-                    <option key={optionValue} value={optionValue}>
-                      {optionValue}
+                  {/* --- KORRIGIERTER TEIL --- */}
+                  {selectOptions.map((optionObj) => ( // Umbenannt zu optionObj für Klarheit
+                    <option
+                      key={optionObj.key || optionObj.value} // <-- Eindeutigen Key verwenden (z.B. optionObj.key)
+                      value={optionObj.value} // <-- Den 'value' aus dem Objekt verwenden
+                    >
+                      {optionObj.label} {/* <-- Das 'label' aus dem Objekt anzeigen */}
                     </option>
                   ))}
+                  {/* --- ENDE KORREKTUR --- */}
                 </select>
                 {itemDescription && <p className="text-xs text-muted-foreground">{itemDescription}</p>}
                 {constraints && <p className="text-xs text-muted-foreground italic">Hinweis: {constraints.join(' ')}</p>}
@@ -203,7 +208,7 @@ export function DynamicFormRenderer({
       {/* Dynamische Felder (Erforderlich) */}
       {Object.keys(semanticDataInfo).length > 0 ? (
         <div>
-          <h3 className="text-base font-semibold mb-3">Damit dein Text wirkt …</h3>
+          <h3 className="text-base font-semibold mb-3">So wird dein Text besonders …</h3>
           <div className="grid grid-cols-1 gap-4 mt-6">
             {requiredFieldsRendered}
           </div>
@@ -231,7 +236,7 @@ export function DynamicFormRenderer({
               "text-base font-semibold hover:no-underline",
               "p-4 rounded-md bg-muted/60 hover:bg-muted/80 transition-colors w-full flex justify-between items-center"
             )}>
-              Optionale Angaben (aufklappen)
+              Noch persönlicher machen? (aufklappen)
             </AccordionTrigger>
             <AccordionContent className="pt-4 space-y-4">
               {renderSemanticFields(semanticDataInfo, true, '')}

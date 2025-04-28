@@ -1,7 +1,7 @@
 // app/admin/prompts/page.js
 'use client'; // WICHTIG: Bleibt Client Component
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useTransition } from 'react'; // useTransition hinzugefügt
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import React from 'react';
@@ -9,7 +9,7 @@ import React from 'react';
 // Importiere die Server Actions
 // --- KORREKTER IMPORT ---
 // import { getAdminPageData, logout } from '@/app/actions'; // <-- ALT
-import { getAdminPageData } from '@/app/admin/prompts/actions'; // <-- NEU (logout entfernt)
+import { getAdminPageData, bulkCreateStripeProducts } from '@/app/admin/prompts/actions'; // bulkCreateStripeProducts hinzugefügt
 
 // Importiere UI Komponenten
 import AddPromptForm from '@/components/AddPromptForm';
@@ -41,7 +41,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 // Icons
-import { AlertCircle, ExternalLink, Pencil, PlusCircle, Loader2, LogOut } from "lucide-react"; // LogOut wird nicht mehr direkt benötigt
+import { AlertCircle, ExternalLink, Pencil, PlusCircle, Loader2, CheckCircle2, RefreshCw } from "lucide-react"; // LogOut entfernt, CheckCircle2, RefreshCw hinzugefügt
 import { Separator } from "@/components/ui/separator";
 
 // Hilfsfunktion zum Gruppieren (bleibt gleich)
@@ -60,34 +60,41 @@ function groupPromptsByCategory(prompts) {
 
 
 export default function AdminPromptsPage() {
-  // === State Variablen (bleiben gleich) ===
+  // === State Variablen (erweitert) ===
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [userEmail, setUserEmail] = useState('');
   const [allPrompts, setAllPrompts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [bulkActionMessage, setBulkActionMessage] = useState(''); // NEU: Feedback für Bulk Action
+  const [bulkActionMessageType, setBulkActionMessageType] = useState(null); // NEU: Typ des Feedbacks
+  const [isBulkActionPending, startBulkActionTransition] = useTransition(); // NEU: Pending State für Bulk Action
 
-  // === Daten laden beim ersten Rendern (bleibt gleich) ===
+  // === Daten laden beim ersten Rendern (angepasst) ===
   useEffect(() => {
+    // --- NEU: loadData Funktion ---
     async function loadData() {
-      setIsLoading(true);
-      setError(null);
-      const result = await getAdminPageData(); // Ruft die importierte Action auf
+        setIsLoading(true);
+        setError(null);
+        setBulkActionMessage(''); // Feedback zurücksetzen beim Neuladen
+        setBulkActionMessageType(null);
+        const result = await getAdminPageData(); // Ruft die importierte Action auf
 
-      if (!result.success) {
-        setError(result.error || 'Ein unbekannter Fehler ist aufgetreten.');
-        // Weiterleitungen basierend auf dem Fehler aus der Action
-        if (result.error === 'Nicht eingeloggt.') redirect('/login');
-        if (result.error === 'Nicht autorisiert.') redirect('/');
-      } else {
-        setUserEmail(result.user?.email || '');
-        setAllPrompts(result.prompts);
-      }
-      setIsLoading(false);
+        if (!result.success) {
+          setError(result.error || 'Ein unbekannter Fehler ist aufgetreten.');
+          // Weiterleitungen basierend auf dem Fehler aus der Action
+          if (result.error === 'Nicht eingeloggt.') redirect('/login');
+          if (result.error === 'Nicht autorisiert.') redirect('/');
+        } else {
+          setUserEmail(result.user?.email || '');
+          setAllPrompts(result.prompts);
+        }
+        setIsLoading(false);
     }
+    // --- ENDE NEU ---
     loadData();
-  }, []);
+  }, []); // Abhängigkeit bleibt leer, da nur beim Mounten geladen wird
 
   // === Abgeleitete Werte (bleiben gleich) ===
   const availableCategories = useMemo(() => {
@@ -114,6 +121,19 @@ export default function AdminPromptsPage() {
     return Object.keys(filteredAndGroupedPrompts).sort();
   }, [filteredAndGroupedPrompts]);
 
+
+  // === NEUE FUNKTION: Handler für Bulk Stripe Creation ===
+  const handleBulkCreateStripe = () => {
+    setBulkActionMessage(''); // Altes Feedback löschen
+    setBulkActionMessageType(null);
+    startBulkActionTransition(async () => {
+      const result = await bulkCreateStripeProducts();
+      setBulkActionMessage(result.message);
+      setBulkActionMessageType(result.success ? 'success' : 'error');
+      // Optional: Daten neu laden, um die Tabelle zu aktualisieren (falls IDs angezeigt werden)
+      // loadData(); // Oder spezifischer nur die Prompts neu fetchen
+    });
+  };
 
   // === Rendern (Lade- und Fehlerzustände bleiben gleich) ===
   if (isLoading) {
@@ -180,8 +200,37 @@ export default function AdminPromptsPage() {
                 </div>
               </DialogContent>
             </Dialog>
+
+            {/* --- NEUER BUTTON für Bulk Stripe Creation --- */}
+            <Button
+              variant="outline"
+              onClick={handleBulkCreateStripe}
+              disabled={isBulkActionPending || isLoading} // Deaktivieren während Laden oder Aktion läuft
+            >
+              {isBulkActionPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" /> // Oder ein anderes passendes Icon
+              )}
+              Stripe Sync (Fehlende)
+            </Button>
+            {/* --- ENDE NEUER BUTTON --- */}
           </div>
         </div>
+
+        {/* --- NEU: Feedback-Bereich für Bulk Action --- */}
+        {bulkActionMessage && (
+          <Alert variant={bulkActionMessageType === 'error' ? 'destructive' : 'default'} className={bulkActionMessageType === 'success' ? 'border-green-500 text-green-700 dark:text-green-300 dark:border-green-700 [&>svg]:text-green-700' : ''}>
+            {bulkActionMessageType === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+            <AlertTitle>{bulkActionMessageType === 'error' ? 'Fehler bei Stripe Sync' : 'Stripe Sync Ergebnis'}</AlertTitle>
+            {/* Zeilenumbrüche in der Nachricht darstellen */}
+            <AlertDescription style={{ whiteSpace: 'pre-wrap' }}>
+              {bulkActionMessage}
+            </AlertDescription>
+          </Alert>
+        )}
+        {/* --- ENDE Feedback-Bereich --- */}
+
 
         {/* Filter- und Suchleiste (bleibt gleich) */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
