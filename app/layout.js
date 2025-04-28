@@ -1,11 +1,10 @@
-// app/layout.js (VEREINFACHT)
+// app/layout.js (WIEDER KORRIGIERT)
 
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import AuthListenerWrapper from '@/components/AuthListenerWrapper';
 import CookieConsentBanner from "@/components/CookieConsentBanner";
-// KEINE Imports mehr für Navigation, Footer oder headers!
 
 // Fonts bleiben gleich
 const geistSans = Geist({
@@ -23,16 +22,17 @@ export const metadata = {
   description: "Entdecke und nutze perfekte Prompts.",
 };
 
-// RootLayout ist NICHT mehr async, da wir keine User-Daten mehr hier brauchen
 export default function RootLayout({ children }) {
-  // KEIN User-Daten holen mehr hier!
-  // KEINE Pfad-Erkennung mehr hier!
-
   return (
     <html lang="de" suppressHydrationWarning>
       <head />
+      {/* --- BODY ZURÜCKGESETZT --- */}
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-background text-foreground`}
+        // Erklärung der Klassen:
+        // - flex, h-screen, overflow-hidden ENTFERNT!
+        // - min-h-screen: Sorgt dafür, dass der Body mindestens die Bildschirmhöhe hat (gut für Footer)
+        // - bg-background/text-foreground: Beibehalten für Standardfarben
       >
         {/* AuthListenerWrapper umschließt alles */}
         <AuthListenerWrapper>
@@ -43,15 +43,15 @@ export default function RootLayout({ children }) {
               enableSystem
               disableTransitionOnChange
             >
-            {/* KEIN spezielles Wrapper-Div oder <main> mehr hier */}
-            {/* Die spezifischen Layouts (public, dashboard) kümmern sich darum */}
+            {/* Kinder werden direkt gerendert */}
             {children}
 
-            {/* Cookie Banner wird immer gerendert, Positionierung über CSS */}
+            {/* Cookie Banner wird immer gerendert */}
             <CookieConsentBanner />
           </ThemeProvider>
         </AuthListenerWrapper>
       </body>
+      {/* --- ENDE BODY ZURÜCKGESETZT --- */}
     </html>
   );
 }

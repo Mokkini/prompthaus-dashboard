@@ -1,16 +1,22 @@
-// components/DashboardNav.js - Angepasste Reihenfolge
+// components/DashboardNav.js - Angepasst mit bedingtem Admin-Link
 
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 // Icons importieren
-import { Package, Settings, User, Home } from 'lucide-react'; // Layers entfernt
+import { Package, Settings, User, Home, ShieldCheck } from 'lucide-react';
 
-export default function DashboardNav() {
+// Die Komponente erwartet jetzt eine 'user'-Prop
+export default function DashboardNav({ user }) {
+    // Prüfe, ob der Benutzer Admin ist (E-Mail-Vergleich)
+    // Stelle sicher, dass ADMIN_EMAIL in deinen Umgebungsvariablen gesetzt ist!
+    // (z.B. in .env.local oder den Systemeinstellungen deines Hostings)
+    const isAdmin = user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL; // NEXT_PUBLIC_, falls im Client benötigt, sonst nur process.env.ADMIN_EMAIL
+
     return (
         <>
             {/* Hauptnavigation */}
             <nav className="flex flex-col space-y-1 px-2 py-4 flex-grow">
-                {/* --- NEUE REIHENFOLGE --- */}
+                {/* --- REIHENFOLGE --- */}
 
                 {/* 1. Zur Startseite */}
                 <Button variant="ghost" className="w-full justify-start" asChild>
@@ -44,9 +50,17 @@ export default function DashboardNav() {
                     </Link>
                 </Button>
 
-                {/* --- ENDE NEUE REIHENFOLGE --- */}
-
-                {/* Der Block mit "Alle Kategorien" wurde entfernt */}
+                {/* --- Admin-Bereich Link (BEDINGT) --- */}
+                {/* Wird nur gerendert, wenn isAdmin true ist */}
+                {isAdmin && (
+                    <Button variant="ghost" className="w-full justify-start mt-4 border-t pt-4" asChild>
+                        <Link href="/admin">
+                            <ShieldCheck className="mr-2 h-4 w-4 text-red-500" /> {/* Icon für Admin */}
+                            Admin-Bereich
+                        </Link>
+                    </Button>
+                )}
+                {/* --- ENDE Admin-Bereich Link --- */}
 
             </nav>
         </>

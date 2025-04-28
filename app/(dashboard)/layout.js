@@ -1,36 +1,43 @@
-// app/(dashboard)/layout.js
-import Sidebar from '@/components/Sidebar';
-import Header from '@/components/Header';
-import { createClient } from '@/lib/supabase/server'; // Supabase Server Client importieren
-import { redirect } from 'next/navigation';      // redirect importieren
+// app/(dashboard)/layout.js - Angepasst, um 'user' an Sidebar zu übergeben
 
-// Layout wird async, um Daten zu holen
+import '@/app/globals.css';
+import Header from '@/components/Header';
+import Sidebar from '@/components/Sidebar'; // <-- HIER WIRD SIE IMPORTIERT
+import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
+
 export default async function DashboardLayout({ children }) {
   const supabase = createClient();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-  // Nutzerdaten holen
-  const { data: { user }, error } = await supabase.auth.getUser();
-
-  // Wenn kein Nutzer oder Fehler -> zum Login umleiten
-  // WICHTIG: Stellt sicher, dass nur eingeloggte Nutzer das Dashboard sehen
-  if (error || !user) {
-    console.log('Dashboard Layout: Kein Nutzer gefunden oder Fehler, leite zu /login um.');
+  // Wenn kein Benutzer eingeloggt ist oder ein Fehler auftritt, zur Login-Seite weiterleiten
+  if (userError || !user) {
+    console.log("Kein Benutzer eingeloggt oder Fehler beim Abrufen:", userError?.message);
     redirect('/login');
   }
 
-  // Log zur Überprüfung (kann später entfernt werden)
-  console.log('Dashboard Layout: User gefunden:', user?.email);
-
+  // Wenn der Benutzer eingeloggt ist, das Dashboard-Layout rendern
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
-      <Sidebar user={user} /> {/* Nutzerdaten auch an Sidebar übergeben (optional) */}
-      <div className="flex flex-col flex-1">
-        {/* Nutzerdaten an Header übergeben */}
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      {/* Sidebar wird hier gerendert */}
+      {/* --- NEU: user-Prop an Sidebar übergeben --- */}
+      <Sidebar user={user} />
+      {/* --- ENDE NEU --- */}
+
+      {/* Hauptinhaltsbereich (wo deine page.js-Dateien landen) */}
+      <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+        {/* Header wird hier gerendert (user-Prop wird bereits übergeben) */}
         <Header user={user} />
-        <main className="flex-1 p-6">
-          {children}
+        <main className="p-4 md:p-8 flex-1">
+          {children} {/* <-- Hier wird der Inhalt der aktuellen Seite eingefügt */}
         </main>
       </div>
     </div>
   );
 }
+
+// Metadaten für das Dashboard-Layout
+export const metadata = {
+  title: 'Prompthaus Dashboard',
+  description: 'Verwaltung deiner Prompts',
+};

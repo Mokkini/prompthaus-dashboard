@@ -1,4 +1,4 @@
-// components/AddPromptForm.js - Mit Tag-Eingabefeld
+// components/AddPromptForm.js - Mit automatischer Slug-Generierung
 
 "use client";
 
@@ -11,11 +11,36 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 
+// --- NEU: Hilfsfunktion zum Generieren eines Slugs ---
+function generateSlug(text) {
+  if (!text) return '';
+  return text
+    .toLowerCase() // Alles klein schreiben
+    .trim() // Leerzeichen am Anfang/Ende entfernen
+    .replace(/\s+/g, '-') // Leerzeichen durch Bindestriche ersetzen
+    .replace(/[^\w-]+/g, '') // Alle nicht-alphanumerischen Zeichen (außer Bindestrich) entfernen
+    .replace(/--+/g, '-'); // Mehrfache Bindestriche durch einen ersetzen
+}
+// --- ENDE NEU ---
+
 export default function AddPromptForm() {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [promptDataJson, setPromptDataJson] = useState('');
+
+  // --- NEU: States für Name und Slug ---
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
+  // --- ENDE NEU ---
+
+  // --- NEU: Handler für Namensänderung ---
+  const handleNameChange = (event) => {
+    const newName = event.target.value;
+    setName(newName);
+    setSlug(generateSlug(newName)); // Slug automatisch generieren
+  };
+  // --- ENDE NEU ---
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -24,7 +49,9 @@ export default function AddPromptForm() {
     setMessageType(null);
 
     const formData = new FormData(event.currentTarget);
-    // Stelle sicher, dass der aktuelle Wert aus dem State verwendet wird
+    // Stelle sicher, dass die aktuellen Werte aus den States verwendet werden
+    formData.set('name', name); // <-- NEU: Name aus State
+    formData.set('slug', slug); // <-- NEU: Slug aus State
     formData.set('promptDataJson', promptDataJson);
 
     // Die Tags werden automatisch durch FormData geholt, da das Feld einen 'name' hat.
@@ -36,8 +63,11 @@ export default function AddPromptForm() {
       setMessage(result.message || 'Paket erfolgreich hinzugefügt.');
       setMessageType('success');
       event.target.reset(); // Setzt alle Standard-Formularfelder zurück
+      // --- NEU: States zurücksetzen ---
+      setName('');
+      setSlug('');
+      // --- ENDE NEU ---
       setPromptDataJson(''); // JSON-State explizit zurücksetzen
-      // Optional: Auch andere States zurücksetzen, falls nötig
     } else {
       setMessage(result.message || 'Ein unbekannter Fehler ist aufgetreten.');
       setMessageType('error');
@@ -82,16 +112,34 @@ export default function AddPromptForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Paket-Name */}
+      {/* Paket-Name (ANGEPASST) */}
       <div className="space-y-2">
         <Label htmlFor="name">Paket-Name</Label>
-        <Input type="text" id="name" name="name" required disabled={isSubmitting} />
+        <Input
+          type="text"
+          id="name"
+          name="name"
+          required
+          value={name} // <-- NEU: Kontrolliert durch State
+          onChange={handleNameChange} // <-- NEU: Handler verwenden
+          disabled={isSubmitting}
+        />
       </div>
 
-      {/* Slug */}
+      {/* Slug (ANGEPASST) */}
       <div className="space-y-2">
-        <Label htmlFor="slug">Slug</Label>
-        <Input type="text" id="slug" name="slug" required pattern="[a-z0-9-]+" placeholder="z.b. danke-sagen" disabled={isSubmitting} />
+        <Label htmlFor="slug">Slug (automatisch generiert)</Label>
+        <Input
+          type="text"
+          id="slug"
+          name="slug"
+          required
+          pattern="[a-z0-9-]+" // Pattern bleibt zur Sicherheit
+          placeholder="wird aus dem namen generiert..."
+          value={slug} // <-- NEU: Kontrolliert durch State
+          onChange={(e) => setSlug(e.target.value)} // <-- NEU: Erlaube manuelle Änderung
+          disabled={isSubmitting}
+        />
         <p className="text-sm text-muted-foreground">
           URL-Teil, klein, keine Leerzeichen oder Sonderzeichen außer Bindestrich.
         </p>
@@ -132,13 +180,13 @@ export default function AddPromptForm() {
         />
       </div>
 
-      {/* --- NEUES FELD FÜR TAGS --- */}
+      {/* Tags */}
       <div className="space-y-2">
         <Label htmlFor="tags">Tags (mit Komma trennen)</Label>
         <Input
           type="text"
           id="tags"
-          name="tags" // Wichtig für FormData
+          name="tags"
           placeholder="z.B. TOP, E-Mail, Beruf, beliebt"
           disabled={isSubmitting}
         />
@@ -146,14 +194,13 @@ export default function AddPromptForm() {
           Einzelne Wörter oder kurze Phrasen, mit Komma getrennt. 'beliebt' wird speziell behandelt.
         </p>
       </div>
-      {/* --- ENDE NEUES FELD FÜR TAGS --- */}
 
       {/* Prompt-Daten JSON */}
       <div className="space-y-2">
         <Label htmlFor="promptDataJson">Prompt-Daten (als einzelnes JSON-Objekt)</Label>
         <Textarea
           id="promptDataJson"
-          name="promptDataJson" // Name bleibt, aber Wert wird über State gesteuert
+          name="promptDataJson"
           rows={20}
           required
           value={promptDataJson}

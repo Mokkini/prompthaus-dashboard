@@ -1,9 +1,10 @@
-// components/DeletePromptButton.js - REFACTORED with AlertDialog & shadcn/ui Button
+// components/DeletePromptButton.js - REFACTORED with AlertDialog & shadcn/ui Button & router.refresh()
 "use client";
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation'; // <-- Importiere useRouter
 // Die Server Action importieren
-import { deletePromptPackage } from '@/app/admin/prompts/actions'; // <-- Dieser Pfad ist bereits korrekt!
+import { deletePromptPackage } from '@/app/admin/prompts/actions'; // <-- Pfad ist korrekt
 // shadcn/ui Komponenten importieren
 import { Button } from "@/components/ui/button";
 import {
@@ -21,12 +22,9 @@ import {
 import { Trash2, Loader2 } from "lucide-react";
 
 export default function DeletePromptButton({ packageId, packageName }) {
-  // useTransition für den Pending-State der Server Action
+  const router = useRouter(); // <-- Initialisiere den Router
   const [isPending, startTransition] = useTransition();
-  // Optional: State für Fehlermeldungen aus der Action
   const [error, setError] = useState(null);
-  // State, um den Dialog nach Fehler ggf. offen zu halten (optional, hier nicht implementiert)
-  // const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   // Funktion, die beim Klick auf "Endgültig löschen" im Dialog aufgerufen wird
   const performDelete = () => {
@@ -34,21 +32,30 @@ export default function DeletePromptButton({ packageId, packageName }) {
     startTransition(async () => { // Startet die Server Action mit Pending State
       try {
         // Wir rufen die Server Action direkt als Funktion auf
-        // WICHTIG: Die Action 'deletePromptPackage' muss packageId als Argument akzeptieren!
         const result = await deletePromptPackage(packageId);
 
         if (result?.error) { // Prüft, ob die Action ein Fehlerobjekt zurückgibt
           throw new Error(result.error);
         }
-        // Bei Erfolg schließt sich der Dialog automatisch und die Seite sollte
-        // durch die Server Action neu validiert werden (kein expliziter Code hier nötig).
-        // setIsDialogOpen(false); // Falls man den Dialog manuell steuern würde
+
+        // --- NEU: Bei Erfolg den Router zum Aktualisieren der Daten anweisen ---
+        router.refresh();
+        // --- ENDE NEU ---
+
+        // Optional: Erfolgsmeldung (z.B. mit einem Toast-System)
+        // import { toast } from 'sonner'; // Beispiel mit Sonner
+        // toast.success(`Paket "${packageName}" erfolgreich gelöscht.`);
+
+        // Der Dialog schließt sich automatisch, da keine manuelle Steuerung (z.B. über einen `open` State) erfolgt.
 
       } catch (e) {
         console.error("Fehler beim Löschen:", e);
         setError(e.message || "Paket konnte nicht gelöscht werden.");
-        // Hier könnte man entscheiden, den Dialog offen zu lassen, um den Fehler anzuzeigen
-        // Aktuell schließt er sich trotzdem. Eine Fehleranzeige via Toast wäre eine Alternative.
+        // Der Dialog schließt sich standardmäßig trotzdem.
+        // Um den Fehler im Dialog anzuzeigen, müsste man den Dialog-State manuell steuern (`open`, `onOpenChange`).
+        // Alternativ: Fehlermeldung via Toast anzeigen.
+        // import { toast } from 'sonner'; // Beispiel mit Sonner
+        // toast.error(`Fehler: ${e.message || "Paket konnte nicht gelöscht werden."}`);
       }
       // isPending wird automatisch von startTransition zurückgesetzt
     });
@@ -73,10 +80,15 @@ export default function DeletePromptButton({ packageId, packageName }) {
           <AlertDialogDescription>
             Diese Aktion kann nicht rückgängig gemacht werden. Das Prompt-Paket
             &quot;{packageName}&quot; wird dauerhaft gelöscht.
+            {/* --- NEU: Fehlermeldung im Dialog anzeigen --- */}
+            {error && (
+              <p className="text-sm text-red-600 dark:text-red-500 mt-3 font-medium">
+                Fehler: {error}
+              </p>
+            )}
+            {/* --- ENDE NEU --- */}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        {/* Optional: Hier könnte man den Fehler anzeigen, falls state management komplexer wäre */}
-        {/* {error && <p className="text-sm text-destructive mt-2">{error}</p>} */}
         <AlertDialogFooter>
           {/* Der Abbrechen-Button */}
           <AlertDialogCancel disabled={isPending}>Abbrechen</AlertDialogCancel>
@@ -96,10 +108,3 @@ export default function DeletePromptButton({ packageId, packageName }) {
     </AlertDialog>
   );
 }
-
-// Wichtiger Hinweis für die Server Action (z.B. in app/admin/prompts/actions.js):
-// Damit dieser Code funktioniert, muss die Funktion `deletePromptPackage` so angepasst werden,
-// dass sie die packageId direkt als Argument akzeptiert (statt nur über FormData).
-// Beispiel Signatur: export async function deletePromptPackage(packageId: string) { ... }
-// Wenn die Action zwingend FormData braucht, müssten wir den <form>-Ansatz beibehalten
-// und ihn programmatisch aus performDelete heraus absenden (weniger elegant).

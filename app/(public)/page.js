@@ -36,7 +36,7 @@ export default async function LandingPage() {
       {isAdmin && (
         <div className="container mx-auto px-4 pt-4 flex justify-end">
           <Button variant="outline" size="sm" asChild>
-            <Link href="/admin/prompts">
+            <Link href="/admin">
               <ShieldCheck className="mr-2 h-4 w-4" />
               Admin Panel
             </Link>

@@ -1,39 +1,53 @@
-// app/admin/prompts/actions.js - Mit Stripe-Integration für Erstellen/Löschen und Bulk-Erstellung
+// app/admin/prompts/actions.js - Mit Stripe-Integration und korrekter Client-Initialisierung
 
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server'; // Für User-Client (Auth-Check, Lesezugriff mit RLS)
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js'; // Für Admin-Client (RLS-Bypass)
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-// --- Stripe importieren ---
 import Stripe from 'stripe';
 
 // --- Stripe initialisieren ---
-// Stelle sicher, dass STRIPE_SECRET_KEY in deinen Umgebungsvariablen gesetzt ist
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2024-04-10', // Oder deine gewünschte API-Version
   typescript: false,
 });
-// --- ENDE Stripe ---
+
+// --- HILFSFUNKTION für Admin Client ---
+function getSupabaseAdminClient() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceKey) {
+        console.error("[AdminClient] Supabase URL oder Service Key fehlt in Umgebungsvariablen!");
+        throw new Error('Server-Konfigurationsfehler für Admin-Operationen.');
+    }
+    // Wichtig: Neuen Client mit Service Key erstellen, um RLS zu umgehen
+    return createSupabaseAdminClient(supabaseUrl, serviceKey, {
+        auth: {
+            autoRefreshToken: false,
+            persistSession: false
+        }
+    });
+}
+// --- ENDE HILFSFUNKTION ---
 
 
-// --- FUNKTION: getAdminPageData (unverändert) ---
+// --- FUNKTION: getAdminPageData (Verwendet User-Client für Lesezugriff mit RLS) ---
 export async function getAdminPageData() {
-  const supabase = createClient();
+  const supabase = createClient(); // User-Client OK für Lesezugriff
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
     console.error("Fehler beim Holen des Benutzers oder nicht eingeloggt:", userError?.message);
     return { success: false, error: 'Nicht eingeloggt.', user: null, prompts: [] };
   }
-  // --- Admin Check (Optional, aber empfohlen) ---
-  // if (user.email !== process.env.ADMIN_EMAIL) {
-  //   console.warn(`Nicht-Admin (${user.email}) versucht auf Admin-Daten zuzugreifen.`);
-  //   return { success: false, error: 'Nicht autorisiert.', user: user, prompts: [] };
-  // }
-  // --- Ende Admin Check ---
+  // Optionaler Admin Check (kann hier oder in der Seitenkomponente erfolgen)
+  // if (user.email !== process.env.ADMIN_EMAIL) { ... }
+
   const { data: prompts, error: promptsError } = await supabase
     .from('prompt_packages')
-    .select('*') // Alle Spalten auswählen
+    .select('*')
     .order('name', { ascending: true });
   if (promptsError) {
     console.error("Fehler beim Laden der Prompt-Pakete:", promptsError.message);
@@ -42,39 +56,34 @@ export async function getAdminPageData() {
   return { success: true, user: user, prompts: prompts || [] };
 }
 
-// --- FUNKTION: getEditPageData (unverändert) ---
+// --- FUNKTION: getEditPageData (Verwendet User-Client für Lesezugriff mit RLS) ---
 export async function getEditPageData(packageId) {
   if (!packageId) {
     console.error("getEditPageData: Keine Paket-ID übergeben.");
     return { success: false, error: 'Ungültige Anfrage: Paket-ID fehlt.', user: null, promptPackage: null };
   }
-  const supabase = createClient();
+  const supabase = createClient(); // User-Client OK für Lesezugriff
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
     console.error("Fehler beim Holen des Benutzers oder nicht eingeloggt:", userError?.message);
     return { success: false, error: 'Nicht eingeloggt.', user: null, promptPackage: null };
   }
-  // --- Admin Check (Optional, aber empfohlen) ---
-  // if (user.email !== process.env.ADMIN_EMAIL) {
-  //   console.warn(`Nicht-Admin (${user.email}) versucht auf Edit-Daten zuzugreifen.`);
-  //   return { success: false, error: 'Nicht autorisiert.', user: user, promptPackage: null };
-  // }
-  // --- Ende Admin Check ---
+  // Optionaler Admin Check
+
   console.log(`Versuche Paket mit ID ${packageId} für Bearbeitung zu laden...`);
   const { data: promptPackage, error: packageError } = await supabase
     .from('prompt_packages')
-    .select('*') // Alle Spalten auswählen
+    .select('*')
     .eq('id', packageId)
     .single();
   if (packageError) {
     console.error(`Fehler beim Laden des Pakets ${packageId}:`, packageError.message);
-    if (packageError.code === 'PGRST116') { // PostgREST Fehlercode für "Keine oder mehrere Zeilen gefunden"
+    if (packageError.code === 'PGRST116') {
          return { success: false, error: `Paket mit ID ${packageId} nicht gefunden.`, user: user, promptPackage: null };
     }
     return { success: false, error: `Fehler beim Laden des Pakets: ${packageError.message}`, user: user, promptPackage: null };
   }
   if (!promptPackage) {
-      // Sollte durch .single() und PGRST116 abgedeckt sein, aber zur Sicherheit
       console.warn(`Kein Paket mit ID ${packageId} gefunden (aber kein DB-Fehler).`);
       return { success: false, error: `Paket mit ID ${packageId} nicht gefunden.`, user: user, promptPackage: null };
   }
@@ -99,11 +108,12 @@ const PromptPackageSchema = z.object({
   promptDataJson: z.string().min(1, "Prompt-Daten JSON ist erforderlich."),
 });
 
-// --- FUNKTION: addPromptPackage (ANGEPASST für Stripe) ---
+// --- FUNKTION: addPromptPackage (Verwendet Admin Client für Schreibzugriffe) ---
 export async function addPromptPackage(formData) {
-  const supabaseAdmin = createClient(); // Admin Client für DB-Operationen
+  // --- KORREKTUR: Admin Client verwenden! ---
+  const supabaseAdmin = getSupabaseAdminClient();
 
-  // 1. Daten validieren (wie bisher)
+  // 1. Daten validieren
   const rawFormData = {
     name: formData.get('name'),
     slug: formData.get('slug'),
@@ -122,7 +132,7 @@ export async function addPromptPackage(formData) {
     };
   }
 
-  // 2. JSON parsen und validieren (wie bisher)
+  // 2. JSON parsen und validieren
   const { promptDataJson, tags: tagsString, price, ...packageData } = validatedFields.data;
   let parsedPromptData;
   try {
@@ -134,7 +144,6 @@ export async function addPromptPackage(formData) {
   const validatedPromptData = PromptDataSchema.safeParse(parsedPromptData);
   if (!validatedPromptData.success) {
     console.error("Validierungsfehler (Prompt-Daten):", validatedPromptData.error.flatten().fieldErrors);
-    // Detailliertere Fehlermeldung für den Benutzer (wie bisher)
     const firstErrorPath = validatedPromptData.error.errors[0]?.path.join('.');
     const firstErrorMessage = validatedPromptData.error.errors[0]?.message;
     let userMessage = "Fehler in der Struktur der Prompt-Daten.";
@@ -142,167 +151,147 @@ export async function addPromptPackage(formData) {
         userMessage = `Fehler im Prompt-Daten JSON (${firstErrorPath}): ${firstErrorMessage}`;
     } else if (firstErrorMessage) {
          userMessage = `Fehler im Prompt-Daten JSON: ${firstErrorMessage}`;
-    } // ... (restliche spezifische Fehlermeldungen wie bisher)
+    }
     return { success: false, message: userMessage };
   }
 
-  // 3. Tags verarbeiten (wie bisher)
+  // 3. Tags verarbeiten
   const tagsArray = tagsString
     ? tagsString.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
     : [];
 
-  // 4. Paket in Supabase speichern (WICHTIG: stripe_price_id wird später hinzugefügt)
-  let supabasePackageData; // Variable für die Supabase-Daten
+  // 4. Paket in Supabase speichern (mit Admin Client)
+  let supabasePackageData;
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin // <-- Admin Client
       .from('prompt_packages')
       .insert([{
-          ...packageData, // name, slug, category, description
-          price: price, // Preis hier auch speichern
-          ...validatedPromptData.data, // context, semantic_data, writing_instructions
+          ...packageData,
+          price: price,
+          ...validatedPromptData.data,
           tags: tagsArray,
-          // stripe_price_id wird später hinzugefügt/aktualisiert
        }])
-      .select() // Wichtig: Daten zurückholen, um die ID zu bekommen
-      .single(); // Wir erwarten nur einen Datensatz
+      .select()
+      .single();
 
     if (error) {
-      console.error("Supabase Insert Fehler:", error);
+      console.error("Supabase Insert Fehler (mit Admin Client):", error);
       if (error.code === '23505' && error.message.includes('prompt_packages_slug_key')) {
-          return { success: false, message: `Fehler: Der Slug "${packageData.slug}" existiert bereits. Bitte wähle einen anderen.` };
+          return { success: false, message: `Fehler: Der Slug "${packageData.slug}" existiert bereits.` };
       }
       return { success: false, message: `Datenbankfehler: ${error.message}` };
     }
-    supabasePackageData = data; // Speichere die zurückgegebenen Daten (inkl. ID)
-    console.log("Prompt-Paket erfolgreich in Supabase hinzugefügt:", supabasePackageData);
+    supabasePackageData = data;
+    console.log("Prompt-Paket erfolgreich in Supabase hinzugefügt (mit Admin Client):", supabasePackageData);
 
   } catch (e) {
-    console.error("Unerwarteter Fehler beim Supabase Insert:", e);
+    console.error("Unerwarteter Fehler beim Supabase Insert (mit Admin Client):", e);
     return { success: false, message: `Unerwarteter Serverfehler beim DB-Insert: ${e.message}` };
   }
 
-  // --- NEU: Schritt 5: Stripe Produkt und Preis erstellen ---
+  // 5. Stripe Produkt und Preis erstellen
   let stripePriceId = null;
-  if (supabasePackageData && supabasePackageData.id) { // Nur wenn Supabase erfolgreich war und wir eine ID haben
+  if (supabasePackageData && supabasePackageData.id) {
     try {
       console.log(`[Stripe] Erstelle Produkt für Paket: ${packageData.name}`);
-      // 5a: Stripe Produkt erstellen
       const product = await stripe.products.create({
         name: packageData.name,
-        description: packageData.description || undefined, // Optional Beschreibung hinzufügen
+        description: packageData.description || undefined,
         metadata: {
-          supabase_package_id: supabasePackageData.id, // Verknüpfung zur Supabase ID
+          supabase_package_id: supabasePackageData.id,
           slug: packageData.slug,
         }
       });
       console.log(`[Stripe] Produkt erstellt: ${product.id}`);
 
-      // 5b: Stripe Preis erstellen (Preis muss in Cent sein!)
       const priceInCents = Math.round(price * 100);
       console.log(`[Stripe] Erstelle Preis (${priceInCents} Cent) für Produkt: ${product.id}`);
       const stripePrice = await stripe.prices.create({
         product: product.id,
         unit_amount: priceInCents,
-        currency: 'eur', // Währung anpassen, falls nötig (z.B. 'usd')
+        currency: 'eur',
         metadata: {
            supabase_package_id: supabasePackageData.id,
         }
-        // Optional: recurring für Abos hinzufügen:
-        // recurring: { interval: 'month' }, // z.B. für monatliche Abos
       });
-      stripePriceId = stripePrice.id; // Die ID des Preis-Objekts speichern
+      stripePriceId = stripePrice.id;
       console.log(`[Stripe] Preis erstellt: ${stripePriceId}`);
 
-      // 5c: Supabase Paket mit Stripe Preis-ID aktualisieren
+      // Supabase Paket mit Stripe Preis-ID aktualisieren (mit Admin Client)
       console.log(`[Supabase] Aktualisiere Paket ${supabasePackageData.id} mit Stripe Price ID: ${stripePriceId}`);
-      const { error: updateError } = await supabaseAdmin
+      const { error: updateError } = await supabaseAdmin // <-- Admin Client
         .from('prompt_packages')
         .update({ stripe_price_id: stripePriceId })
         .eq('id', supabasePackageData.id);
 
       if (updateError) {
-        console.error(`[Supabase] Fehler beim Aktualisieren des Pakets ${supabasePackageData.id} mit Stripe Price ID:`, updateError);
-        // WICHTIG: Fehlerbehandlung, wenn das Update fehlschlägt
-        // Das Paket existiert in Supabase, aber ohne Stripe-Verknüpfung.
-        // Stripe Produkt/Preis existieren aber!
+        console.error(`[Supabase] Fehler beim Aktualisieren des Pakets ${supabasePackageData.id} mit Stripe Price ID (mit Admin Client):`, updateError);
         return {
-            success: false, // Signalisiert einen Fehler im Gesamtprozess
-            message: `Paket in DB erstellt, Stripe Produkt/Preis erstellt (${stripePriceId}), ABER Fehler beim Speichern der Stripe Preis-ID in DB: ${updateError.message}. Bitte manuell in DB nachtragen!`
-            // Hier könnte man versuchen, das Stripe Produkt/Preis wieder zu löschen, um Konsistenz herzustellen (komplexer)
+            success: false,
+            message: `Paket in DB erstellt, Stripe Produkt/Preis erstellt (${stripePriceId}), ABER Fehler beim Speichern der Stripe Preis-ID in DB: ${updateError.message}. Bitte manuell nachtragen!`
         };
       }
-      console.log(`[Supabase] Paket ${supabasePackageData.id} erfolgreich mit Stripe Price ID aktualisiert.`);
+      console.log(`[Supabase] Paket ${supabasePackageData.id} erfolgreich mit Stripe Price ID aktualisiert (mit Admin Client).`);
 
     } catch (stripeError) {
       console.error("[Stripe] Fehler beim Erstellen von Produkt/Preis oder DB-Update:", stripeError);
-      // WICHTIG: Fehlerbehandlung, wenn Stripe fehlschlägt
-      // Das Paket existiert in Supabase, aber ohne Stripe-Verknüpfung.
-      // Versuche, das gerade erstellte Supabase-Paket wieder zu löschen, um Konsistenz zu wahren.
-      console.warn(`[Rollback] Versuche Supabase-Paket ${supabasePackageData.id} wegen Stripe-Fehler zu löschen...`);
+      console.warn(`[Rollback] Versuche Supabase-Paket ${supabasePackageData.id} wegen Stripe-Fehler zu löschen (mit Admin Client)...`);
       try {
-          await supabaseAdmin.from('prompt_packages').delete().eq('id', supabasePackageData.id);
+          await supabaseAdmin.from('prompt_packages').delete().eq('id', supabasePackageData.id); // <-- Admin Client
           console.log(`[Rollback] Supabase-Paket ${supabasePackageData.id} erfolgreich gelöscht.`);
       } catch (rollbackError) {
-          console.error(`[Rollback] Kritisch: Fehler beim Löschen des Supabase-Pakets ${supabasePackageData.id} nach Stripe-Fehler:`, rollbackError);
-          // In diesem Fall existiert das Paket in Supabase ohne Stripe-Verknüpfung. Manueller Eingriff nötig.
+          console.error(`[Rollback] Kritisch: Fehler beim Löschen des Supabase-Pakets ${supabasePackageData.id} nach Stripe-Fehler (mit Admin Client):`, rollbackError);
           return {
               success: false,
               message: `Paket in DB erstellt, aber Fehler bei Stripe: ${stripeError.message}. Automatisches Rollback des DB-Eintrags ist fehlgeschlagen! Bitte manuell prüfen.`
           };
       }
-      // Wenn Rollback erfolgreich war:
       return {
-        success: false, // Signalisiert einen Fehler im Gesamtprozess
+        success: false,
         message: `Fehler bei Stripe: ${stripeError.message}. Das Paket wurde nicht erstellt (DB-Eintrag zurückgerollt).`
       };
     }
   } else {
-      // Sollte nicht passieren, wenn der erste Try-Block erfolgreich war
       console.error("Fehler: Supabase-Daten nach Insert nicht verfügbar, kann Stripe nicht erstellen.");
       return { success: false, message: "Interner Fehler: Supabase-Daten nach Insert nicht verfügbar." };
   }
-  // --- ENDE NEU (für Stripe) ---
 
-  // 6. Cache Revalidierung (wie bisher, aber Checkout-Seite hinzugefügt)
+  // 6. Cache Revalidierung
   console.log("Revalidiere Caches...");
-  revalidatePath('/admin/prompts'); // Admin-Übersicht
-  revalidatePath('/pakete'); // Öffentliche Paketliste
-  revalidatePath(`/pakete/${packageData.slug}`); // Detailseite des Pakets
-  revalidatePath(`/checkout/${packageData.slug}`); // Checkout-Seite (wichtig wegen stripe_price_id)
+  revalidatePath('/admin/prompts');
+  revalidatePath('/pakete');
+  revalidatePath(`/pakete/${packageData.slug}`);
+  revalidatePath(`/checkout/${packageData.slug}`);
 
-  // 7. Erfolgsmeldung zurückgeben (angepasst)
+  // 7. Erfolgsmeldung
   return {
       success: true,
       message: 'Prompt-Paket erfolgreich hinzugefügt und in Stripe angelegt.',
-      // Optional: Die erstellten Daten zurückgeben, falls das Frontend sie braucht
       data: { ...supabasePackageData, stripe_price_id: stripePriceId }
   };
 }
 
 
-// --- FUNKTION: deletePromptPackage (ANGEPASST für Stripe Produkt-Deaktivierung) ---
+// --- FUNKTION: deletePromptPackage (Verwendet Admin Client für Schreib-/Lesezugriffe) ---
 export async function deletePromptPackage(id) {
-  const supabaseAdmin = createClient();
+  // --- KORREKTUR: Admin Client verwenden! ---
+  const supabaseAdmin = getSupabaseAdminClient();
 
-  // --- NEU (Stripe): Optional: Stripe Produkt deaktivieren ---
-  // Bevor wir aus der DB löschen, holen wir die Stripe Produkt/Preis IDs
-  // ACHTUNG: Das Löschen aus der DB passiert trotzdem, auch wenn Stripe fehlschlägt!
-  // Eine robustere Lösung würde Transaktionen oder komplexere Fehlerbehandlung erfordern.
+  // Stripe Produkt deaktivieren (verwendet Admin Client zum Holen der ID)
   let stripeProductId = null;
   try {
-      const { data: packageData, error: fetchError } = await supabaseAdmin
+      const { data: packageData, error: fetchError } = await supabaseAdmin // <-- Admin Client
           .from('prompt_packages')
-          .select('stripe_price_id') // Nur die Price ID holen
+          .select('stripe_price_id')
           .eq('id', id)
           .single();
 
       if (fetchError) {
-          console.warn(`[Stripe Delete] Konnte Paket ${id} nicht finden, um Stripe ID zu holen: ${fetchError.message}`);
+          console.warn(`[Stripe Delete] Konnte Paket ${id} nicht finden, um Stripe ID zu holen (mit Admin Client): ${fetchError.message}`);
       } else if (packageData?.stripe_price_id) {
-          // Preis holen, um Produkt-ID zu bekommen
           try {
               const price = await stripe.prices.retrieve(packageData.stripe_price_id);
-              stripeProductId = typeof price.product === 'string' ? price.product : null; // Sicherstellen, dass es ein String ist
+              stripeProductId = typeof price.product === 'string' ? price.product : null;
 
               if (stripeProductId) {
                   console.log(`[Stripe Delete] Deaktiviere Produkt ${stripeProductId} für Paket ${id}`);
@@ -312,62 +301,55 @@ export async function deletePromptPackage(id) {
                   console.warn(`[Stripe Delete] Konnte keine Produkt-ID aus Preis ${packageData.stripe_price_id} extrahieren.`);
               }
           } catch (stripeError) {
-              // Fehler loggen, aber DB-Löschung fortsetzen
               console.error(`[Stripe Delete] Fehler beim Abrufen/Deaktivieren von Produkt für Price ID ${packageData.stripe_price_id}:`, stripeError);
-              // Hier könnte man überlegen, ob man den Fehler an den Client zurückgibt
-              // return { success: false, error: `DB-Löschung gestartet, aber Fehler bei Stripe: ${stripeError.message}` };
           }
       } else {
           console.log(`[Stripe Delete] Paket ${id} hat keine Stripe Price ID, überspringe Deaktivierung.`);
       }
   } catch (e) {
-      console.error(`[Stripe Delete] Unerwarteter Fehler beim Holen/Deaktivieren des Stripe Produkts für Paket ${id}:`, e);
-      // Fehler loggen, aber DB-Löschung fortsetzen
+      console.error(`[Stripe Delete] Unerwarteter Fehler beim Holen/Deaktivieren des Stripe Produkts für Paket ${id} (mit Admin Client):`, e);
   }
-  // --- ENDE NEU (Stripe) ---
 
-
-  console.log(`Versuche Paket mit ID ${id} aus Supabase zu löschen...`);
+  // Löschen aus Supabase DB (mit Admin Client)
+  console.log(`[deletePromptPackage] Versuche Paket mit ID ${id} aus Supabase zu löschen (mit Admin Client)...`);
   try {
-    // Löschen aus Supabase DB
-    const { error } = await supabaseAdmin.from('prompt_packages').delete().match({ id: id });
+    const { error } = await supabaseAdmin // <-- Admin Client
+        .from('prompt_packages')
+        .delete()
+        .match({ id: id });
 
     if (error) {
-      console.error("Supabase Delete Fehler:", error);
-      // Gib spezifische Fehlermeldung zurück
+      console.error("[deletePromptPackage] Supabase Delete Fehler (mit Admin Client):", error);
       return { success: false, error: `Datenbankfehler beim Löschen: ${error.message}` };
     }
 
-    console.log(`Paket mit ID ${id} erfolgreich aus Supabase gelöscht.`);
+    console.log(`[deletePromptPackage] Paket mit ID ${id} erfolgreich aus Supabase gelöscht.`);
 
-    // Cache Revalidierung (wichtig!)
+    // Cache Revalidierung
     revalidatePath('/admin/prompts');
     revalidatePath('/pakete');
-    // Man könnte auch versuchen, die spezifischen Paket- und Checkout-Seiten zu revalidieren,
-    // aber da der Slug nach dem Löschen nicht mehr bekannt ist, ist das schwierig.
-    // Die Revalidierung von /pakete sollte ausreichen.
 
-    return { success: true }; // Erfolg melden
+    return { success: true };
 
   } catch (e) {
-    console.error("Unerwarteter Fehler in deletePromptPackage:", e);
-    // Gib allgemeine Fehlermeldung zurück
+    console.error("[deletePromptPackage] Unerwarteter Fehler im try-catch (mit Admin Client):", e);
     return { success: false, error: `Unerwarteter Serverfehler: ${e.message}` };
   }
 }
 
 
-// --- FUNKTION: updatePromptPackage (ANGEPASST mit Hinweis auf manuelle Stripe-Preisänderung) ---
+// --- FUNKTION: updatePromptPackage (Verwendet Admin Client für Schreibzugriffe) ---
 export async function updatePromptPackage(formData) {
-  const supabaseAdmin = createClient();
+  // --- KORREKTUR: Admin Client verwenden! ---
+  const supabaseAdmin = getSupabaseAdminClient();
 
-  // 1. Daten extrahieren (inkl. ID, JSON-String UND Tags-String)
+  // 1. Daten extrahieren
   const packageId = formData.get('packageId');
   console.log('[updatePromptPackage] Empfangene packageId:', packageId);
   const name = formData.get('name');
   const description = formData.get('description');
   const category = formData.get('category');
-  const priceString = formData.get('price'); // Preis als String
+  const priceString = formData.get('price');
   const promptDataJson = formData.get('promptDataJson');
   const tagsString = formData.get('tags');
 
@@ -377,128 +359,106 @@ export async function updatePromptPackage(formData) {
     return { success: false, message: "Fehler: Paket-ID fehlt." };
   }
 
-  // 3. JSON parsen und validieren (wie bisher)
+  // 3. JSON parsen und validieren
   let parsedPromptData;
   try {
     parsedPromptData = JSON.parse(promptDataJson);
-    // Einfache Strukturprüfung (wie bisher)
-    if (typeof parsedPromptData !== 'object' || parsedPromptData === null ||
-        typeof parsedPromptData.context !== 'object' || parsedPromptData.context === null ||
-        typeof parsedPromptData.semantic_data !== 'object' || parsedPromptData.semantic_data === null ||
-        typeof parsedPromptData.writing_instructions !== 'object' || parsedPromptData.writing_instructions === null) {
-      throw new Error("JSON hat nicht die erwartete Grundstruktur (context, semantic_data, writing_instructions).");
-    }
-    // Zusätzliche Validierung mit Zod (wie bisher)
     const validatedPromptData = PromptDataSchema.safeParse(parsedPromptData);
     if (!validatedPromptData.success) {
         const firstErrorPath = validatedPromptData.error.errors[0]?.path.join('.');
         const firstErrorMessage = validatedPromptData.error.errors[0]?.message;
         throw new Error(`Strukturfehler im JSON (${firstErrorPath || 'unbekannt'}): ${firstErrorMessage || 'Unbekannter Validierungsfehler'}`);
     }
-    // parsedPromptData = validatedPromptData.data; // Verwende die validierten Daten
-
+    // parsedPromptData = validatedPromptData.data; // Verwende validierte Daten
   } catch (e) {
     console.error("JSON Parse/Struktur Fehler beim Update:", e.message);
     return { success: false, message: `Fehler im Prompt-Daten JSON: ${e.message}` };
   }
 
-  // 4. Preis validieren (aus String)
+  // 4. Preis validieren
   const priceFloat = parseFloat(priceString);
   if (isNaN(priceFloat) || priceFloat < 0) {
     return { success: false, message: "Fehler: Ungültiger Preis angegeben." };
   }
 
-  // 5. Tags-String verarbeiten (wie bisher)
+  // 5. Tags verarbeiten
   const tagsArray = tagsString
     ? tagsString.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
     : [];
 
-   // 6. Daten in der Datenbank aktualisieren (inkl. Tags)
+   // 6. Daten in der Datenbank aktualisieren (mit Admin Client)
     try {
-      console.log(`[updatePromptPackage] Versuche Update für ID: ${packageId}`);
+      console.log(`[updatePromptPackage] Versuche Update für ID: ${packageId} (mit Admin Client)`);
 
-      // --- WICHTIG: Stripe Preis wird hier NICHT automatisch aktualisiert! ---
-      // Wir aktualisieren nur die Daten in unserer Datenbank.
-      // Wenn sich der Preis ändert, muss der Admin den Preis manuell in Stripe anpassen
-      // oder wir müssten hier zusätzliche Logik einbauen (komplexer, z.B. neuen Preis erstellen).
-
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await supabaseAdmin // <-- Admin Client
         .from('prompt_packages')
         .update({
           name: name,
           description: description,
           category: category,
-          price: priceFloat, // Den validierten Float-Preis speichern
+          price: priceFloat,
           context: parsedPromptData.context,
           semantic_data: parsedPromptData.semantic_data,
           writing_instructions: parsedPromptData.writing_instructions,
           tags: tagsArray,
-          // stripe_price_id wird NICHT geändert, es sei denn, wir implementieren Preis-Update-Logik
         })
-        .match({ id: packageId }) // Wichtig: Nur den Datensatz mit der passenden ID ändern
-        .select() // Daten nach dem Update zurückholen
-        .single(); // Erwarte genau einen Datensatz
+        .match({ id: packageId })
+        .select()
+        .single();
 
-
-    if (error) {
-      console.error("Supabase Update Fehler:", error);
-      if (error.code === 'PGRST116') {
-          return { success: false, message: `Datenbankfehler beim Update: Paket mit ID ${packageId} nicht gefunden oder Bedingung nicht eindeutig.` };
+      if (error) {
+        console.error("Supabase Update Fehler (mit Admin Client):", error);
+        if (error.code === 'PGRST116') {
+            return { success: false, message: `Datenbankfehler beim Update: Paket mit ID ${packageId} nicht gefunden.` };
+        }
+        return { success: false, message: `Datenbankfehler beim Update: ${error.message}` };
       }
-      return { success: false, message: `Datenbankfehler beim Update: ${error.message}` };
+
+      console.log("Prompt-Paket erfolgreich aktualisiert (mit Admin Client):", data);
+
+      // 7. Cache Revalidierung
+      revalidatePath('/admin/prompts');
+      revalidatePath('/pakete');
+      if (data?.slug) {
+        revalidatePath(`/pakete/${data.slug}`);
+        revalidatePath(`/checkout/${data.slug}`);
+        revalidatePath(`/admin/prompts/edit/${packageId}`);
+      }
+
+      // Hinweis auf manuelle Stripe-Preisänderung
+      let successMessage = 'Änderungen erfolgreich gespeichert.';
+      if (priceFloat > 0) { // Einfacher Check, ob Preis gesetzt ist
+          successMessage += ' WICHTIG: Der Preis in Stripe wurde nicht automatisch angepasst. Bitte bei Bedarf manuell im Stripe Dashboard ändern!';
+      }
+
+      return { success: true, message: successMessage, data };
+
+    } catch (e) {
+      console.error("[updatePromptPackage] Unerwarteter Fehler im try-catch (mit Admin Client):", e);
+      return { success: false, message: `Unerwarteter Serverfehler: ${e.message}` };
     }
-
-    console.log("Prompt-Paket erfolgreich aktualisiert:", data);
-
-    // 7. Cache Revalidierung (wie bisher)
-    revalidatePath('/admin/prompts');
-    revalidatePath('/pakete');
-    if (data?.slug) { // Slug aus der Antwort nehmen, falls vorhanden
-      revalidatePath(`/pakete/${data.slug}`);
-      revalidatePath(`/checkout/${data.slug}`);
-      revalidatePath(`/admin/prompts/edit/${packageId}`); // Auch die Edit-Seite neu laden
-    }
-
-    // --- NEU: Hinweis auf manuelle Stripe-Preisänderung hinzufügen ---
-    let successMessage = 'Änderungen erfolgreich gespeichert.';
-    // Optional: Prüfen, ob sich der Preis tatsächlich geändert hat (komplexer, da alter Preis geholt werden müsste)
-    // Hier einfacher Hinweis, wenn der Preis > 0 ist (oder sich geändert hat)
-    // Man könnte den alten Preis aus `initialData` im Frontend mitgeben, aber das ist unsicher.
-    // Sicherer wäre, den alten Preis vor dem Update aus der DB zu holen.
-    // Fürs Erste: Immer den Hinweis anzeigen, wenn ein Preis gesetzt ist.
-    if (priceFloat > 0) {
-        successMessage += ' WICHTIG: Der Preis in Stripe wurde nicht automatisch angepasst. Bitte bei Bedarf manuell im Stripe Dashboard ändern!';
-    }
-    // --- ENDE NEU ---
-
-
-    return { success: true, message: successMessage, data };
-
-  } catch (e) {
-    console.error("[updatePromptPackage] Unerwarteter Fehler im try-catch:", e);
-    return { success: false, message: `Unerwarteter Serverfehler: ${e.message}` };
-  }
 }
 
-// --- NEUE FUNKTION: bulkCreateStripeProducts ---
+// --- FUNKTION: bulkCreateStripeProducts (Verwendet Admin Client für Schreib-/Lesezugriffe) ---
 export async function bulkCreateStripeProducts() {
   console.log('[Bulk Stripe] Starte Massenerstellung von Stripe Produkten/Preisen...');
-  const supabaseAdmin = createClient();
+  // --- KORREKTUR: Admin Client verwenden! ---
+  const supabaseAdmin = getSupabaseAdminClient();
   let successCount = 0;
   let errorCount = 0;
   const errors = [];
 
   try {
-    // 1. Hole alle Pakete aus Supabase, bei denen die stripe_price_id fehlt
-    console.log('[Bulk Stripe] Suche Pakete ohne Stripe Price ID...');
-    const { data: packagesToProcess, error: fetchError } = await supabaseAdmin
+    // 1. Hole Pakete ohne Stripe ID (mit Admin Client)
+    console.log('[Bulk Stripe] Suche Pakete ohne Stripe Price ID (mit Admin Client)...');
+    const { data: packagesToProcess, error: fetchError } = await supabaseAdmin // <-- Admin Client
       .from('prompt_packages')
-      .select('id, name, description, price, slug') // Nur benötigte Felder holen
-      .is('stripe_price_id', null); // Nur Pakete ohne Stripe ID
+      .select('id, name, description, price, slug')
+      .is('stripe_price_id', null);
 
     if (fetchError) {
-      console.error('[Bulk Stripe] Fehler beim Holen der Pakete:', fetchError);
-      return { success: false, message: `Fehler beim Abrufen der Pakete aus der Datenbank: ${fetchError.message}` };
+      console.error('[Bulk Stripe] Fehler beim Holen der Pakete (mit Admin Client):', fetchError);
+      return { success: false, message: `Fehler beim Abrufen der Pakete: ${fetchError.message}` };
     }
 
     if (!packagesToProcess || packagesToProcess.length === 0) {
@@ -508,7 +468,7 @@ export async function bulkCreateStripeProducts() {
 
     console.log(`[Bulk Stripe] ${packagesToProcess.length} Paket(e) gefunden. Verarbeite...`);
 
-    // 2. Iteriere über jedes gefundene Paket
+    // 2. Iteriere über jedes Paket
     for (const pkg of packagesToProcess) {
       let createdStripePriceId = null;
       try {
@@ -518,10 +478,7 @@ export async function bulkCreateStripeProducts() {
         const product = await stripe.products.create({
           name: pkg.name,
           description: pkg.description || undefined,
-          metadata: {
-            supabase_package_id: pkg.id,
-            slug: pkg.slug,
-          }
+          metadata: { supabase_package_id: pkg.id, slug: pkg.slug }
         });
         console.log(`[Bulk Stripe] Stripe Produkt erstellt: ${product.id} für Paket ${pkg.id}`);
 
@@ -530,50 +487,41 @@ export async function bulkCreateStripeProducts() {
         const stripePrice = await stripe.prices.create({
           product: product.id,
           unit_amount: priceInCents,
-          currency: 'eur', // Währung prüfen/anpassen
-          metadata: {
-            supabase_package_id: pkg.id,
-          }
+          currency: 'eur',
+          metadata: { supabase_package_id: pkg.id }
         });
         createdStripePriceId = stripePrice.id;
         console.log(`[Bulk Stripe] Stripe Preis erstellt: ${createdStripePriceId} für Produkt ${product.id}`);
 
-        // 2c. Supabase Paket mit der neuen Stripe Preis-ID aktualisieren
-        const { error: updateError } = await supabaseAdmin
+        // 2c. Supabase Paket aktualisieren (mit Admin Client)
+        const { error: updateError } = await supabaseAdmin // <-- Admin Client
           .from('prompt_packages')
           .update({ stripe_price_id: createdStripePriceId })
           .eq('id', pkg.id);
 
         if (updateError) {
-          // Fehler beim Update, aber Stripe Produkt/Preis existieren!
-          console.error(`[Bulk Stripe] Fehler beim Aktualisieren von Supabase Paket ${pkg.id} mit Stripe ID ${createdStripePriceId}:`, updateError);
-          // Wir zählen es als Fehler, aber versuchen, das Stripe Produkt/Preis NICHT zurückzurollen,
-          // da es manuell korrigiert werden kann (ID in DB eintragen).
+          console.error(`[Bulk Stripe] Fehler beim Aktualisieren von Supabase Paket ${pkg.id} mit Stripe ID ${createdStripePriceId} (mit Admin Client):`, updateError);
           throw new Error(`DB Update fehlgeschlagen: ${updateError.message}. Stripe Produkt/Preis (${createdStripePriceId}) existiert.`);
         }
 
-        console.log(`[Bulk Stripe] Supabase Paket ${pkg.id} erfolgreich mit Stripe ID ${createdStripePriceId} aktualisiert.`);
+        console.log(`[Bulk Stripe] Supabase Paket ${pkg.id} erfolgreich mit Stripe ID ${createdStripePriceId} aktualisiert (mit Admin Client).`);
         successCount++;
-
-        // Optional: Cache für die Checkout-Seite dieses Pakets revalidieren
         revalidatePath(`/checkout/${pkg.slug}`);
 
       } catch (loopError) {
         console.error(`[Bulk Stripe] Fehler bei der Verarbeitung von Paket ID ${pkg.id}:`, loopError);
         errorCount++;
         errors.push(`Paket ID ${pkg.id} (${pkg.name}): ${loopError.message}`);
-        // Hier NICHT abbrechen, sondern mit dem nächsten Paket weitermachen!
       }
-    } // Ende der for-Schleife
+    } // Ende for-Schleife
 
     // 3. Ergebnis zusammenfassen
     let finalMessage = `Massenverarbeitung abgeschlossen. ${successCount} Paket(e) erfolgreich in Stripe erstellt und verknüpft.`;
     if (errorCount > 0) {
       finalMessage += ` ${errorCount} Paket(e) fehlgeschlagen. Details siehe Server-Log und unten:\n- ${errors.join('\n- ')}`;
       console.error('[Bulk Stripe] Fehlerdetails:', errors);
-      return { success: false, message: finalMessage }; // Gesamtergebnis ist "false" wegen Fehlern
+      return { success: false, message: finalMessage };
     } else {
-      // Optional: Cache für Übersichtsseiten revalidieren, wenn alles erfolgreich war
       revalidatePath('/admin/prompts');
       revalidatePath('/pakete');
       return { success: true, message: finalMessage };

@@ -21,18 +21,20 @@ function getSupabaseAdminClient() {
         console.error("[AdminClient] Supabase URL oder Service Key fehlt!");
         throw new Error('Server-Konfigurationsfehler für Admin-Operationen.');
     }
-    return createSupabaseAdminClient(supabaseUrl, serviceKey);
+    // Wichtig: Auth-Optionen hinzufügen, um Warnungen zu vermeiden
+    return createSupabaseAdminClient(supabaseUrl, serviceKey, {
+        auth: {
+            autoRefreshToken: false,
+            persistSession: false
+        }
+    });
 }
 // ======= ENDE HILFSFUNKTION =======
 
 
-// ======= HILFSFUNKTION: Zugriffsprüfung =======
-/**
- * Prüft, ob der aktuelle Benutzer Zugriff auf das Prompt-Paket mit dem gegebenen Slug hat.
- * @param {string} slug - Der Slug des Prompt-Pakets.
- * @returns {Promise<{hasAccess: boolean, packageData: object | null, user: object | null, error: string | null}>}
- */
+// ======= HILFSFUNKTION: Zugriffsprüfung (unverändert) =======
 async function checkAccess(slug) {
+    // ... (Code bleibt unverändert) ...
     const supabase = createClient(); // Server Client für User Auth
     const supabaseAdmin = getSupabaseAdminClient(); // Admin Client für DB-Zugriffe
     let promptPackage = null;
@@ -118,10 +120,11 @@ async function checkAccess(slug) {
 // ======= ENDE HILFSFUNKTION Zugriffsprüfung =======
 
 
-// --- Funktion: generateText ---
+// --- Funktion: generateText (ANGEPASST) ---
 export async function generateText(payload) {
   console.log("[generateText] Server Action aufgerufen mit Payload:", payload);
   const { placeholders, tone, slug } = payload;
+  const supabaseAdmin = getSupabaseAdminClient(); // Admin Client für DB-Zugriffe
 
   // --- Berechtigungsprüfung mit Hilfsfunktion ---
   const accessResult = await checkAccess(slug);
@@ -134,32 +137,44 @@ export async function generateText(payload) {
   const promptPackage = accessResult.packageData;
   // --- ENDE Berechtigungsprüfung ---
 
-  // Prüfen, ob die Prompt-Daten im Paket vorhanden sind (sollte durch checkAccess abgedeckt sein, aber sicher ist sicher)
+  // Prüfen, ob die Prompt-Daten im Paket vorhanden sind
   if (!promptPackage || !promptPackage.context || !promptPackage.writing_instructions) {
       console.error(`[generateText] Fehlende Prompt-Daten im Paket ${promptPackage?.id} für Slug ${slug}.`);
       return { error: "Fehlerhafte Prompt-Konfiguration im Paket." };
   }
 
-  // Prompt für die AI zusammenbauen
-  const systemPrompt = `DEINE ROLLE:
-Du bist der „Prompthaus Textarchitekt“. Deine Aufgabe: Erstelle auf Basis eines strukturierten JSON (Kontext, writing_instructions) und Benutzereingaben (semantic_data) einen hochwertigen, stilistisch perfekten deutschen Text.
+  // --- LLM-Einstellungen aus der Datenbank laden ---
+  let llmSettings;
+  const defaultSystemPrompt = 'Du bist ein hilfreicher Assistent.'; // Fallback
+  try {
+      console.log("[generateText] Lade LLM-Einstellungen aus der Datenbank...");
+      const { data: settingsData, error: settingsError } = await supabaseAdmin
+          .from('llm_settings')
+          .select('*')
+          .limit(1) // Annahme: Es gibt nur eine Zeile für die globalen Einstellungen
+          .maybeSingle(); // Gibt null zurück, wenn keine Zeile gefunden wird, statt Fehler
 
-NUTZE:
-- Kontext, writing_instructions und semantic_data als Grundlage.
-- Integriere Benutzerangaben natürlich und sinnvoll an passenden Stellen.
+      if (settingsError) {
+          console.error("[generateText] Fehler beim Laden der LLM-Einstellungen:", settingsError.message);
+          llmSettings = null; // Signalisiert, dass Defaults verwendet werden sollen
+      } else if (!settingsData) {
+          console.warn("[generateText] Keine LLM-Einstellungen in der Datenbank gefunden. Verwende Fallback-Werte.");
+          llmSettings = null;
+      } else {
+          llmSettings = settingsData;
+          console.log("[generateText] LLM-Einstellungen erfolgreich geladen.");
+      }
+  } catch (e) {
+      console.error("[generateText] Unerwarteter Fehler beim Laden der LLM-Einstellungen:", e);
+      llmSettings = null;
+  }
+  // --- ENDE LLM-Einstellungen laden ---
 
-ACHTE AUF:
-- Anrede exakt gemäß formality_level (du oder Sie).
-- Kein Smalltalk oder Einleitungsfloskeln im ersten Satz (z.B. 'Ich hoffe, es geht Ihnen gut.' verboten).
-- Abschluss mit „Mit freundlichen Grüßen“, danach kein Name oder Platzhalter – Text endet direkt.
-- Sprache: natürlich, grammatikalisch korrekt, klar, idiomatisch.
-- Stilmittel (z.B. Emojis, Aufzählungen) nur nutzen, wenn stylistic_rules es erlauben.
+  // --- System-Prompt aus Einstellungen oder Fallback verwenden ---
+  const systemPrompt = llmSettings?.system_prompt || defaultSystemPrompt;
+  // --- ENDE System-Prompt ---
 
-WEITERE REGELN:
-- JSON als Leitfaden nutzen, nicht als starres Skript.
-- Bei Unsicherheiten Priorität auf goal, writing_instructions und key_messages.
-- Gib ausschließlich den fertigen Fließtext zurück, ohne Kommentare oder Metainfos.`;
-
+  // User Message zusammenbauen (bleibt gleich)
   let userMessage = "Hier sind die spezifischen Informationen für diesen Text:\n";
   userMessage += `Kontext aus JSON: ${JSON.stringify(promptPackage.context)}\n`;
   userMessage += `Schreibanweisungen aus JSON: ${JSON.stringify(promptPackage.writing_instructions)}\n`;
@@ -169,14 +184,13 @@ WEITERE REGELN:
   userMessage += "Vom Benutzer bereitgestellte Werte:\n";
   for (const key in placeholders) {
     if (placeholders[key] !== null && placeholders[key] !== undefined && placeholders[key] !== '') {
-        // Formatierung des Schlüssels für bessere Lesbarkeit in der AI-Nachricht (optional)
         const formattedKey = key.replace(/_/g, ' ');
         userMessage += `- ${formattedKey}: ${placeholders[key]}\n`;
     }
   }
   userMessage += "\nGeneriere jetzt den Text basierend auf deiner Rolle und diesen Informationen.";
 
-  console.log("[generateText] --- System Prompt (Rolle) ---");
+  console.log("[generateText] --- System Prompt (aus DB oder Fallback) ---");
   // console.log(systemPrompt); // Kann für Debugging aktiviert werden
   console.log("[generateText] --- User Message (Kontext & Eingaben) ---");
   // console.log(userMessage); // Kann für Debugging aktiviert werden
@@ -185,26 +199,46 @@ WEITERE REGELN:
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    console.log("[generateText] Rufe OpenAI API mit fetchWithUltraBackoff auf...");
-    const response = await fetchWithUltraBackoff(() =>
-      openai.chat.completions.create({
-        model: "gpt-4o-mini", // Oder anderes Modell
+    // --- KORREKTUR: Stop-Sequenzen korrekt verarbeiten ---
+    let stopSequences = ["User:", "System:"]; // Fallback
+    if (llmSettings?.stop_sequences) {
+        if (Array.isArray(llmSettings.stop_sequences)) {
+            // Wenn es bereits ein Array ist (aus der DB), direkt verwenden
+            stopSequences = llmSettings.stop_sequences.filter(s => typeof s === 'string' && s.trim() !== '');
+        } else if (typeof llmSettings.stop_sequences === 'string') {
+            // Wenn es ein String ist, splitten
+            stopSequences = llmSettings.stop_sequences.split(',').map(s => s.trim()).filter(s => s);
+        }
+        // Wenn es weder Array noch String ist, bleibt der Fallback
+    }
+    // --- ENDE KORREKTUR ---
+
+    // --- API-Parameter aus llmSettings oder Defaults ---
+    const apiParams = {
+        model: llmSettings?.model || "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage }
         ],
-        temperature: 0.7,
-        top_p: 0.95,
-        presence_penalty: 0.3,
-        frequency_penalty: 0.2,
-        max_tokens: 1500,
-        stop: ["User:", "System:"],
-        seed: 12345
-      }),
-      { maxRetries: 5, baseDelay: 500, softFail: true } // Optionen explizit setzen
+        temperature: llmSettings?.temperature ?? 0.7,
+        top_p: llmSettings?.top_p ?? 0.95,
+        presence_penalty: llmSettings?.presence_penalty ?? 0.3,
+        frequency_penalty: llmSettings?.frequency_penalty ?? 0.2,
+        max_tokens: llmSettings?.max_tokens ?? 1500,
+        stop: stopSequences, // <-- Korrigierte Variable verwenden
+        // Seed: Nur übergeben, wenn ein Wert vorhanden ist
+        ...(llmSettings?.seed !== null && llmSettings?.seed !== undefined && { seed: llmSettings.seed }),
+    };
+    console.log("[generateText] Verwendete OpenAI API Parameter:", apiParams);
+    // --- ENDE API-Parameter ---
+
+    console.log("[generateText] Rufe OpenAI API mit fetchWithUltraBackoff auf...");
+    const response = await fetchWithUltraBackoff(() =>
+      openai.chat.completions.create(apiParams),
+      { maxRetries: 5, baseDelay: 500, softFail: true }
     );
 
-    // Angepasste Fehler- und Erfolgsbehandlung
+    // Fehler- und Erfolgsbehandlung (bleibt gleich)
     if (response.error) {
       console.error("[generateText] Sanfter Fehler bei AI API (fetchWithUltraBackoff):", response.message);
       return { error: `Fehler bei der Textgenerierung: ${response.message}. Bitte versuche es erneut.` };
@@ -221,7 +255,7 @@ WEITERE REGELN:
     return { text: generatedContent.trim() };
 
   } catch (aiError) {
-    // Harter Fehler
+    // Harter Fehler (bleibt gleich)
     console.error("[generateText] Harter Abbruchfehler bei AI API:", aiError);
     let errorMessage = "Ein schwerwiegender Fehler ist bei der Textgenerierung aufgetreten.";
     if (aiError instanceof Error) {
@@ -232,21 +266,47 @@ WEITERE REGELN:
 }
 
 
-// --- Funktion: refineText ---
+// --- Funktion: refineText (ANGEPASST: Verwendet auch LLM-Einstellungen) ---
 export async function refineText(payload) {
   console.log("[refineText] Server Action aufgerufen mit Payload:", payload);
-  const { originalText, tone, refineInstruction, slug } = payload; // placeholders entfernt, da sie im refine prompt nicht direkt verwendet werden
+  const { originalText, tone, refineInstruction, slug } = payload;
+  const supabaseAdmin = getSupabaseAdminClient(); // Admin Client für DB-Zugriffe
 
-  // --- Berechtigungsprüfung mit Hilfsfunktion ---
+  // --- Berechtigungsprüfung (bleibt gleich) ---
   const accessResult = await checkAccess(slug);
-
   if (accessResult.error || !accessResult.hasAccess) {
       console.error(`[refineText] Zugriff verweigert oder Fehler: ${accessResult.error}`);
       return { error: accessResult.error || "Zugriff verweigert." };
   }
   // --- ENDE Berechtigungsprüfung ---
 
-  // Prompt für die AI zusammenbauen
+  // --- LLM-Einstellungen laden (wie in generateText) ---
+  let llmSettings;
+  try {
+      console.log("[refineText] Lade LLM-Einstellungen aus der Datenbank...");
+      const { data: settingsData, error: settingsError } = await supabaseAdmin
+          .from('llm_settings')
+          .select('*')
+          .limit(1)
+          .maybeSingle();
+
+      if (settingsError) {
+          console.error("[refineText] Fehler beim Laden der LLM-Einstellungen:", settingsError.message);
+          llmSettings = null;
+      } else if (!settingsData) {
+          console.warn("[refineText] Keine LLM-Einstellungen in der Datenbank gefunden. Verwende Fallback-Werte.");
+          llmSettings = null;
+      } else {
+          llmSettings = settingsData;
+          console.log("[refineText] LLM-Einstellungen erfolgreich geladen.");
+      }
+  } catch (e) {
+      console.error("[refineText] Unerwarteter Fehler beim Laden der LLM-Einstellungen:", e);
+      llmSettings = null;
+  }
+  // --- ENDE LLM-Einstellungen laden ---
+
+  // Prompt für die AI zusammenbauen (bleibt gleich)
   let systemPrompt = "Du bist ein Assistent zur Textüberarbeitung.\n";
   systemPrompt += `Der Benutzer hat folgenden Text generiert:\n"${originalText}"\n`;
   if (tone) {
@@ -257,26 +317,33 @@ export async function refineText(payload) {
   systemPrompt += "Gib nur den überarbeiteten Text zurück.";
 
   console.log("[refineText] --- System Prompt ---");
-  // console.log(systemPrompt); // Kann für Debugging aktiviert werden
+  // console.log(systemPrompt);
 
-  // AI API aufrufen mit fetchWithUltraBackoff
+  // AI API aufrufen mit fetchWithUltraBackoff (ANGEPASST: Parameter aus llmSettings)
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+    // --- API-Parameter aus llmSettings oder Defaults (ggf. anderes Modell für Refine?) ---
+    const refineModel = llmSettings?.model || "gpt-3.5-turbo"; // Evtl. günstigeres Modell für Refine?
+    const apiParams = {
+        model: refineModel,
+        messages: [{ role: "system", content: systemPrompt }],
+        temperature: llmSettings?.temperature ?? 0.7, // Gleiche Parameter wie Generate?
+        max_tokens: llmSettings?.max_tokens ?? 1500,
+        frequency_penalty: llmSettings?.frequency_penalty ?? 0.1, // Evtl. andere Penalties für Refine?
+        presence_penalty: llmSettings?.presence_penalty ?? 0.0,
+        // Stop-Sequenzen und Seed könnten hier weniger relevant sein
+    };
+    console.log("[refineText] Verwendete OpenAI API Parameter:", apiParams);
+    // --- ENDE API-Parameter ---
+
     console.log("[refineText] Rufe OpenAI API mit fetchWithUltraBackoff auf...");
     const response = await fetchWithUltraBackoff(() =>
-        openai.chat.completions.create({
-            model: "gpt-3.5-turbo", // Oder anderes Modell für Refine
-            messages: [{ role: "system", content: systemPrompt }],
-            temperature: 0.7,
-            max_tokens: 1500, // Max Tokens ggf. anpassen
-            frequency_penalty: 0.1,
-            presence_penalty: 0.0,
-        }),
-        { maxRetries: 3, baseDelay: 400, softFail: true } // Etwas weniger Retries für Refine?
+        openai.chat.completions.create(apiParams), // <-- Verwendet die dynamischen Parameter
+        { maxRetries: 3, baseDelay: 400, softFail: true }
     );
 
-    // Angepasste Fehler- und Erfolgsbehandlung
+    // Fehler- und Erfolgsbehandlung (bleibt gleich)
     if (response.error) {
       console.error("[refineText] Sanfter Fehler bei AI API (fetchWithUltraBackoff):", response.message);
       return { error: `Fehler bei der Textüberarbeitung: ${response.message}. Bitte versuche es erneut.` };
@@ -293,7 +360,7 @@ export async function refineText(payload) {
     return { text: refinedContent.trim() };
 
   } catch (aiError) {
-    // Harter Fehler
+    // Harter Fehler (bleibt gleich)
     console.error("[refineText] Harter Abbruchfehler bei AI API:", aiError);
     let errorMessage = "Ein schwerwiegender Fehler ist bei der Textüberarbeitung aufgetreten.";
     if (aiError instanceof Error) {
