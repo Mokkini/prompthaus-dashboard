@@ -1,4 +1,5 @@
-// app/(public)/prompt/actions.js
+// app/(public)/prompt/actions.js - ANGEPASST mit neuer Funktion refineSelection
+
 'use server';
 
 // ======= Imports =======
@@ -120,10 +121,12 @@ async function checkAccess(slug) {
 // ======= ENDE HILFSFUNKTION Zugriffsprüfung =======
 
 
-// --- Funktion: generateText (ANGEPASST) ---
+// --- Funktion: generateText (unverändert) ---
 export async function generateText(payload) {
+  // ... (Code bleibt unverändert) ...
   console.log("[generateText] Server Action aufgerufen mit Payload:", payload);
-  const { placeholders, tone, slug } = payload;
+  // --- NEU: styleTags aus Payload holen ---
+  const { placeholders, tone, slug, styleTags } = payload;
   const supabaseAdmin = getSupabaseAdminClient(); // Admin Client für DB-Zugriffe
 
   // --- Berechtigungsprüfung mit Hilfsfunktion ---
@@ -174,13 +177,24 @@ export async function generateText(payload) {
   const systemPrompt = llmSettings?.system_prompt || defaultSystemPrompt;
   // --- ENDE System-Prompt ---
 
-  // User Message zusammenbauen (bleibt gleich)
+  // User Message zusammenbauen
   let userMessage = "Hier sind die spezifischen Informationen für diesen Text:\n";
   userMessage += `Kontext aus JSON: ${JSON.stringify(promptPackage.context)}\n`;
   userMessage += `Schreibanweisungen aus JSON: ${JSON.stringify(promptPackage.writing_instructions)}\n`;
-  if (tone) {
-    userMessage += `Vom Benutzer gewünschte zusätzliche Tonalität: ${tone}\n`;
+
+  // --- NEU: Style-Anweisung für generateText hinzufügen ---
+  let styleInstruction = "";
+  if (styleTags && styleTags.length > 0) {
+      styleInstruction += `Gewünschte Stil-Attribute (Tags): [${styleTags.join(', ')}]. `;
   }
+  if (tone) {
+      styleInstruction += `Zusätzliche Stil-Beschreibung: "${tone}". `;
+  }
+  if (styleInstruction) {
+      userMessage += `\n${styleInstruction.trim()}\n`;
+  }
+  // --- ENDE NEU ---
+
   userMessage += "Vom Benutzer bereitgestellte Werte:\n";
   for (const key in placeholders) {
     if (placeholders[key] !== null && placeholders[key] !== undefined && placeholders[key] !== '') {
@@ -192,26 +206,23 @@ export async function generateText(payload) {
 
   console.log("[generateText] --- System Prompt (aus DB oder Fallback) ---");
   // console.log(systemPrompt); // Kann für Debugging aktiviert werden
-  console.log("[generateText] --- User Message (Kontext & Eingaben) ---");
+  console.log("[generateText] --- User Message (Kontext, Stil & Eingaben) ---");
   // console.log(userMessage); // Kann für Debugging aktiviert werden
 
   // AI API aufrufen mit fetchWithUltraBackoff
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    // --- KORREKTUR: Stop-Sequenzen korrekt verarbeiten ---
+    // --- Stop-Sequenzen korrekt verarbeiten ---
     let stopSequences = ["User:", "System:"]; // Fallback
     if (llmSettings?.stop_sequences) {
         if (Array.isArray(llmSettings.stop_sequences)) {
-            // Wenn es bereits ein Array ist (aus der DB), direkt verwenden
             stopSequences = llmSettings.stop_sequences.filter(s => typeof s === 'string' && s.trim() !== '');
         } else if (typeof llmSettings.stop_sequences === 'string') {
-            // Wenn es ein String ist, splitten
             stopSequences = llmSettings.stop_sequences.split(',').map(s => s.trim()).filter(s => s);
         }
-        // Wenn es weder Array noch String ist, bleibt der Fallback
     }
-    // --- ENDE KORREKTUR ---
+    // --- ENDE Stop-Sequenzen ---
 
     // --- API-Parameter aus llmSettings oder Defaults ---
     const apiParams = {
@@ -225,8 +236,7 @@ export async function generateText(payload) {
         presence_penalty: llmSettings?.presence_penalty ?? 0.3,
         frequency_penalty: llmSettings?.frequency_penalty ?? 0.2,
         max_tokens: llmSettings?.max_tokens ?? 1500,
-        stop: stopSequences, // <-- Korrigierte Variable verwenden
-        // Seed: Nur übergeben, wenn ein Wert vorhanden ist
+        stop: stopSequences,
         ...(llmSettings?.seed !== null && llmSettings?.seed !== undefined && { seed: llmSettings.seed }),
     };
     console.log("[generateText] Verwendete OpenAI API Parameter:", apiParams);
@@ -238,7 +248,7 @@ export async function generateText(payload) {
       { maxRetries: 5, baseDelay: 500, softFail: true }
     );
 
-    // Fehler- und Erfolgsbehandlung (bleibt gleich)
+    // Fehler- und Erfolgsbehandlung
     if (response.error) {
       console.error("[generateText] Sanfter Fehler bei AI API (fetchWithUltraBackoff):", response.message);
       return { error: `Fehler bei der Textgenerierung: ${response.message}. Bitte versuche es erneut.` };
@@ -255,7 +265,7 @@ export async function generateText(payload) {
     return { text: generatedContent.trim() };
 
   } catch (aiError) {
-    // Harter Fehler (bleibt gleich)
+    // Harter Fehler
     console.error("[generateText] Harter Abbruchfehler bei AI API:", aiError);
     let errorMessage = "Ein schwerwiegender Fehler ist bei der Textgenerierung aufgetreten.";
     if (aiError instanceof Error) {
@@ -266,10 +276,12 @@ export async function generateText(payload) {
 }
 
 
-// --- Funktion: refineText (ANGEPASST: Verwendet auch LLM-Einstellungen) ---
+// --- Funktion: refineText (unverändert) ---
 export async function refineText(payload) {
+  // ... (Code bleibt unverändert) ...
   console.log("[refineText] Server Action aufgerufen mit Payload:", payload);
-  const { originalText, tone, refineInstruction, slug } = payload;
+  // --- NEU: styleTags aus Payload holen ---
+  const { originalText, tone, refineInstruction, slug, styleTags } = payload;
   const supabaseAdmin = getSupabaseAdminClient(); // Admin Client für DB-Zugriffe
 
   // --- Berechtigungsprüfung (bleibt gleich) ---
@@ -306,14 +318,25 @@ export async function refineText(payload) {
   }
   // --- ENDE LLM-Einstellungen laden ---
 
-  // Prompt für die AI zusammenbauen (bleibt gleich)
+  // Prompt für die AI zusammenbauen
   let systemPrompt = "Du bist ein Assistent zur Textüberarbeitung.\n";
   systemPrompt += `Der Benutzer hat folgenden Text generiert:\n"${originalText}"\n`;
-  if (tone) {
-    systemPrompt += `Gewünschte Tonalität für die Überarbeitung: ${tone}\n`;
+
+  // --- NEU: Style-Anweisung für refineText hinzufügen ---
+  let styleInstruction = "";
+  if (styleTags && styleTags.length > 0) {
+      styleInstruction += `Gewünschte Stil-Attribute (Tags): [${styleTags.join(', ')}]. `;
   }
+  if (tone) {
+      styleInstruction += `Zusätzliche Stil-Beschreibung: "${tone}". `;
+  }
+  if (styleInstruction) {
+      systemPrompt += `\nBerücksichtige bei der Überarbeitung die folgenden Stilvorgaben: ${styleInstruction.trim()}\n`;
+  }
+  // --- ENDE NEU ---
+
   systemPrompt += `Die Anweisung zur Überarbeitung lautet: "${refineInstruction || 'Formuliere den Text neu.'}"\n`;
-  systemPrompt += "Behalte den ursprünglichen Sinn bei, aber wende die Anweisung an.\n";
+  systemPrompt += "Behalte den ursprünglichen Sinn bei, aber wende die Anweisung und die Stilvorgaben an.\n"; // Stilvorgaben erwähnt
   systemPrompt += "Gib nur den überarbeiteten Text zurück.";
 
   console.log("[refineText] --- System Prompt ---");
@@ -328,9 +351,9 @@ export async function refineText(payload) {
     const apiParams = {
         model: refineModel,
         messages: [{ role: "system", content: systemPrompt }],
-        temperature: llmSettings?.temperature ?? 0.7, // Gleiche Parameter wie Generate?
+        temperature: llmSettings?.temperature ?? 0.7,
         max_tokens: llmSettings?.max_tokens ?? 1500,
-        frequency_penalty: llmSettings?.frequency_penalty ?? 0.1, // Evtl. andere Penalties für Refine?
+        frequency_penalty: llmSettings?.frequency_penalty ?? 0.1,
         presence_penalty: llmSettings?.presence_penalty ?? 0.0,
         // Stop-Sequenzen und Seed könnten hier weniger relevant sein
     };
@@ -339,11 +362,11 @@ export async function refineText(payload) {
 
     console.log("[refineText] Rufe OpenAI API mit fetchWithUltraBackoff auf...");
     const response = await fetchWithUltraBackoff(() =>
-        openai.chat.completions.create(apiParams), // <-- Verwendet die dynamischen Parameter
+        openai.chat.completions.create(apiParams),
         { maxRetries: 3, baseDelay: 400, softFail: true }
     );
 
-    // Fehler- und Erfolgsbehandlung (bleibt gleich)
+    // Fehler- und Erfolgsbehandlung
     if (response.error) {
       console.error("[refineText] Sanfter Fehler bei AI API (fetchWithUltraBackoff):", response.message);
       return { error: `Fehler bei der Textüberarbeitung: ${response.message}. Bitte versuche es erneut.` };
@@ -360,7 +383,7 @@ export async function refineText(payload) {
     return { text: refinedContent.trim() };
 
   } catch (aiError) {
-    // Harter Fehler (bleibt gleich)
+    // Harter Fehler
     console.error("[refineText] Harter Abbruchfehler bei AI API:", aiError);
     let errorMessage = "Ein schwerwiegender Fehler ist bei der Textüberarbeitung aufgetreten.";
     if (aiError instanceof Error) {
@@ -369,3 +392,124 @@ export async function refineText(payload) {
     return { error: errorMessage };
   }
 }
+
+// --- NEU: Funktion: refineSelection ---
+// Hilfsfunktion zum Übersetzen des Action Types
+function getActionInstruction(actionType) {
+    switch (actionType) {
+        case 'rephrase': return 'Formuliere den Textabschnitt neu, behalte aber den Sinn bei.';
+        case 'shorten': return 'Kürze den Textabschnitt deutlich, ohne wichtige Informationen zu verlieren.';
+        case 'formalize': return 'Formuliere den Textabschnitt formeller.';
+        case 'warmup': return 'Formuliere den Textabschnitt herzlicher und persönlicher.';
+        default: return 'Überarbeite den Textabschnitt.'; // Fallback
+    }
+}
+
+export async function refineSelection(payload) {
+  console.log("[refineSelection] Server Action aufgerufen mit Payload:", payload);
+  const { selectedText, fullText, actionType, slug } = payload;
+  const supabaseAdmin = getSupabaseAdminClient(); // Admin Client für DB-Zugriffe
+
+  // --- Validierung ---
+  if (!selectedText || !fullText || !actionType || !slug) {
+      console.error("[refineSelection] Ungültiger Payload:", payload);
+      return { error: "Ungültige Anfrage: Es fehlen erforderliche Daten." };
+  }
+
+  // --- Berechtigungsprüfung ---
+  const accessResult = await checkAccess(slug);
+  if (accessResult.error || !accessResult.hasAccess) {
+      console.error(`[refineSelection] Zugriff verweigert oder Fehler: ${accessResult.error}`);
+      return { error: accessResult.error || "Zugriff verweigert." };
+  }
+  // --- ENDE Berechtigungsprüfung ---
+
+  // --- LLM-Einstellungen laden ---
+  let llmSettings;
+  try {
+      console.log("[refineSelection] Lade LLM-Einstellungen...");
+      const { data: settingsData, error: settingsError } = await supabaseAdmin
+          .from('llm_settings')
+          .select('*')
+          .limit(1)
+          .maybeSingle();
+      if (settingsError) throw settingsError;
+      llmSettings = settingsData; // Kann null sein, wenn nichts gefunden
+      console.log("[refineSelection] LLM-Einstellungen geladen:", llmSettings ? 'Ja' : 'Nein, verwende Defaults');
+  } catch (e) {
+      console.error("[refineSelection] Fehler beim Laden der LLM-Einstellungen:", e);
+      llmSettings = null; // Fallback
+  }
+  // --- ENDE LLM-Einstellungen laden ---
+
+  // --- System-Prompt für gezielte Modifikation ---
+  const actionInstruction = getActionInstruction(actionType);
+  let systemPrompt = `Du bist ein Assistent zur gezielten Textmodifikation.
+Der vollständige Text lautet:
+--- VOLLSTÄNDIGER TEXT START ---
+${fullText}
+--- VOLLSTÄNDIGER TEXT ENDE ---
+
+Der vom Benutzer markierte Abschnitt, der modifiziert werden soll, ist:
+--- MARKIERTER ABSCHNITT START ---
+${selectedText}
+--- MARKIERTER ABSCHNITT ENDE ---
+
+Die gewünschte Aktion ist: "${actionInstruction}"
+
+Deine Aufgabe: Modifiziere NUR den markierten Abschnitt im Kontext des vollständigen Textes gemäß der Aktion.
+WICHTIG: Gib NUR den modifizierten Textabschnitt zurück. Keine Einleitung, keine Erklärung, kein Zitat, nur der reine, überarbeitete Text des markierten Abschnitts.`;
+
+  console.log("[refineSelection] --- System Prompt ---");
+  // console.log(systemPrompt);
+
+  // --- AI API aufrufen ---
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    // Modellwahl: Ggf. ein schnelleres/günstigeres Modell für diese Aufgabe?
+    const model = llmSettings?.model || "gpt-4o-mini"; // Oder "gpt-3.5-turbo"
+    const apiParams = {
+        model: model,
+        messages: [{ role: "system", content: systemPrompt }],
+        temperature: llmSettings?.temperature ?? 0.5, // Evtl. etwas weniger kreativ?
+        max_tokens: Math.max(50, Math.round(selectedText.length * 1.5)), // Max Tokens basierend auf Auswahl + Puffer
+        frequency_penalty: llmSettings?.frequency_penalty ?? 0.1,
+        presence_penalty: llmSettings?.presence_penalty ?? 0.0,
+    };
+    console.log("[refineSelection] Verwendete OpenAI API Parameter:", apiParams);
+
+    console.log("[refineSelection] Rufe OpenAI API mit fetchWithUltraBackoff auf...");
+    const response = await fetchWithUltraBackoff(() =>
+        openai.chat.completions.create(apiParams),
+        { maxRetries: 3, baseDelay: 300, softFail: true } // Kürzere Delays für schnelle Aktionen?
+    );
+
+    // Fehler- und Erfolgsbehandlung
+    if (response.error) {
+      console.error("[refineSelection] Sanfter Fehler bei AI API:", response.message);
+      return { error: `Fehler bei der Textmodifikation: ${response.message}.` };
+    }
+
+    const refinedSelectionContent = response.choices?.[0]?.message?.content;
+
+    if (!refinedSelectionContent) {
+      console.error("[refineSelection] Kein Inhalt in der AI-Antwort.");
+      return { error: "Keine gültige Modifikation von der AI erhalten." };
+    }
+
+    console.log("[refineSelection] AI-Antwort erfolgreich erhalten.");
+    // Gib nur den modifizierten Text zurück
+    return { modifiedText: refinedSelectionContent.trim() };
+
+  } catch (aiError) {
+    // Harter Fehler
+    console.error("[refineSelection] Harter Abbruchfehler bei AI API:", aiError);
+    let errorMessage = "Ein schwerwiegender Fehler ist bei der Textmodifikation aufgetreten.";
+    if (aiError instanceof Error) {
+        errorMessage += ` Details: ${aiError.message}`;
+    }
+    return { error: errorMessage };
+  }
+}
+// --- ENDE NEUE FUNKTION ---
