@@ -166,3 +166,16 @@ versuche ihn zu entfernen. Wenn Fehler auftreten, füge ihn wieder hinzu.
     /* Beispiel: font-family: 'Dein Font Name', sans-serif; */
   }
 }
+
+/* --- NEU: Hinzugefügter Layer für Utilities, falls nicht schon vorhanden --- */
+@layer utilities {
+  /* NEU: Styling für die Platzhalter */
+  .placeholder {
+    color: var(--muted-foreground); /* Verwendet die gedämpfte Vordergrundfarbe von shadcn/ui (ein Grauton) */
+    /* Alternativ eine feste Farbe: color: grey; oder color: #888888; */
+    font-style: italic;
+  }
+  /* ENDE NEU */
+
+  /* Hier könnten weitere Utility-Klassen stehen, falls du welche hast */
+}

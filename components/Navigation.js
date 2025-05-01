@@ -1,6 +1,7 @@
 // components/Navigation.js
 'use client';
 
+import { useState, useEffect } from 'react'; // Hooks für User-State
 import Link from 'next/link';
 import Image from 'next/image';
 // SheetHeader und SheetTitle importieren
@@ -8,9 +9,13 @@ import { Sheet, SheetTrigger, SheetContent, SheetClose, SheetHeader, SheetTitle 
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePathname } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client'; // Client-seitigen Supabase Client importieren
 
-export default function Navigation({ user }) {
+// Nimmt keine 'user' Prop mehr entgegen
+export default function Navigation() {
   const pathname = usePathname();
+  const [user, setUser] = useState(null); // State für User
+  const supabase = createClient(); // Client-Instanz
 
   // Scroll-Links für Homepage (OHNE Themenpakete)
   const scrollLinks = [
@@ -28,6 +33,29 @@ export default function Navigation({ user }) {
   const getScrollLinkHref = (hash) => {
     return pathname === '/' ? hash : `/${hash}`;
   };
+
+  // Effekt zum Holen des Users und Lauschen auf Änderungen
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      setUser(currentUser);
+    };
+
+    getUser(); // Initialen User holen
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setUser(session?.user ?? null);
+      }
+    );
+
+    // Cleanup
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, [supabase]);
+
+
 
   return (
     <header className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50">

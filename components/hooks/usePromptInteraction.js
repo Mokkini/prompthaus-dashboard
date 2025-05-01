@@ -1,43 +1,16 @@
-// components/hooks/usePromptInteraction.js - ANGEPASST: Popover-Reset über onOpenChange & Mutually Exclusive Styles
+// components/hooks/usePromptInteraction.js - FINAL CLEANUP
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { generateText, refineText, refineSelection } from '@/app/(public)/prompt/actions';
 import { saveAs } from 'file-saver';
-import { Packer, Document, Paragraph, TextRun } from 'docx';
 import { sendEmailApi } from '@/app/actions'; // Import für E-Mail
 
-// Helper: Holt einen Wert aus einem verschachtelten Objekt anhand eines Pfades (z.B. 'user.address.street')
-const getNestedValue = (obj, path) => {
-    if (!obj || !path) return undefined;
-    return path.split('.').reduce((acc, part) => acc && acc[part], obj);
-};
-
-// Helper: Setzt einen Wert in einem verschachtelten Objekt anhand eines Pfades
-const setNestedValue = (obj, path, value) => {
-    if (!obj || !path) return obj;
-    const keys = path.split('.');
-    let current = obj;
-    for (let i = 0; i < keys.length - 1; i++) {
-        const key = keys[i];
-        if (current[key] === undefined || typeof current[key] !== 'object') {
-            current[key] = {}; // Erstelle verschachtelte Objekte, falls sie nicht existieren
-        }
-        current = current[key];
-    }
-    current[keys[keys.length - 1]] = value;
-    return obj;
-};
-
+// getNestedValue und setNestedValue werden nicht mehr benötigt.
 
 // --- Hook usePromptInteraction ---
 export function usePromptInteraction(promptData, slug) {
-  // --- DEBUG LOG: Initial promptData ---
-  // console.log('[usePromptInteraction] Hook gestartet. Empfangenes promptData:', promptData);
-  // console.log('[usePromptInteraction] Hook gestartet. Empfangener slug:', slug);
-
-  // --- Bestehende States ---
+  // --- States ---
   const [placeholderValues, setPlaceholderValues] = useState({});
-  const [selectedTone, setSelectedTone] = useState('');
   const [generatedText, setGeneratedText] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -46,10 +19,9 @@ export function usePromptInteraction(promptData, slug) {
   const [showRefineInput, setShowRefineInput] = useState(false);
   const [additionalInfo, setAdditionalInfo] = useState('');
   const [isRefining, setIsRefining] = useState(false);
-  const [showToneSuggestions, setShowToneSuggestions] = useState(false);
-  const toneInputRef = useRef(null);
-  const [accordionValue, setAccordionValue] = useState('');
-  const [selectedStyleTags, setSelectedStyleTags] = useState([]);
+  // States für Tonalität entfernt
+  // const [showToneSuggestions, setShowToneSuggestions] = useState(false);
+  // const toneInputRef = useRef(null);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState('');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
@@ -57,28 +29,16 @@ export function usePromptInteraction(promptData, slug) {
   const [sendEmailSuccess, setSendEmailSuccess] = useState(false);
   const [isDownloadingDocx, setIsDownloadingDocx] = useState(false);
   const [docxError, setDocxError] = useState('');
-  // --- State für Maus-Koordinaten ---
   const [selectedTextData, setSelectedTextData] = useState({ text: '', clientX: null, clientY: null });
   const [showTextActions, setShowTextActions] = useState(false);
-  const textOutputRef = useRef(null); // Ref für die Textarea
+  const textOutputRef = useRef(null);
+  const [activeQuickTone, setActiveQuickTone] = useState(null); // <-- NEU: State für aktiven Quick-Tone-Button
+  const [accordionValue, setAccordionValue] = useState(""); // <-- WIEDER HINZUGEFÜGT: State für Accordion
   const [isModifyingSelection, setIsModifyingSelection] = useState(false);
-
-  // --- DEBUG LOG: Initial States ---
-  // console.log('[usePromptInteraction] Initiale Ladezustände:', { loading, isRefining, isDownloadingDocx, isModifyingSelection });
-
-  // --- Semantic Data Info ---
-  const semanticDataInfo = useMemo(() => {
-    const data = promptData?.semantic_data || {};
-    // --- DEBUG LOG: semanticDataInfo Berechnung ---
-    // console.log('[usePromptInteraction] useMemo für semanticDataInfo berechnet:', data);
-    return data;
-  }, [promptData]);
 
   // --- Initialisierung und Reset ---
   const resetInteraction = useCallback(() => {
-    // console.log('[usePromptInteraction] resetInteraction aufgerufen.');
     setPlaceholderValues({});
-    setSelectedTone('');
     setGeneratedText('');
     setLoading(false);
     setErrorMsg('');
@@ -86,217 +46,96 @@ export function usePromptInteraction(promptData, slug) {
     setShowRefineInput(false);
     setAdditionalInfo('');
     setIsRefining(false);
-    setShowToneSuggestions(false);
-    setAccordionValue('');
-    setSelectedStyleTags([]);
-    // Email Dialog States
-    // setShowEmailDialog(false); // Dialog nicht automatisch schließen
+    // setShowToneSuggestions(false); // Entfernt
     setRecipientEmail('');
     setIsSendingEmail(false);
     setSendEmailError('');
     setSendEmailSuccess(false);
-    // Docx States
     setIsDownloadingDocx(false);
     setDocxError('');
-    // Text Selection States
     setSelectedTextData({ text: '', clientX: null, clientY: null });
     setShowTextActions(false);
+    setActiveQuickTone(null); // <-- NEU: Reset Quick Tone
+    setAccordionValue(""); // <-- WIEDER HINZUGEFÜGT: Reset Accordion
     setIsModifyingSelection(false);
   }, []);
 
   // Effekt für Initialisierung und Reset
   useEffect(() => {
-    // --- DEBUG LOG: useEffect Start ---
-    // console.log('[usePromptInteraction] useEffect für Initialisierung gestartet. promptData:', promptData);
-    // console.log('[usePromptInteraction] useEffect: Rufe resetInteraction auf...');
     resetInteraction();
-
-    if (promptData && semanticDataInfo && Object.keys(semanticDataInfo).length > 0) {
-      // console.log('[usePromptInteraction] useEffect: Initialisiere placeholderValues basierend auf semanticDataInfo:', semanticDataInfo);
+    const semanticData = promptData?.semantic_data;
+    if (semanticData && typeof semanticData === 'object' && Object.keys(semanticData).length > 0) {
       const initialPlaceholders = {};
-      Object.entries(semanticDataInfo).forEach(([key, item]) => {
+      Object.entries(semanticData).forEach(([key, item]) => {
         if (item && typeof item === 'object') {
-           initialPlaceholders[key] = item.default || ''; // Nimm Default-Wert oder leer
+           initialPlaceholders[key] = item.default || '';
         }
       });
       setPlaceholderValues(initialPlaceholders);
-      // console.log('[usePromptInteraction] useEffect: Initialisierte placeholderValues:', initialPlaceholders);
-
-      // Initialen Accordion-State setzen (nur öffnen, wenn optionale Felder existieren)
-      const hasOptional = Object.values(semanticDataInfo).some(item => item?.optional === true);
-      setAccordionValue(hasOptional ? '' : 'required-fields');
-      // console.log('[usePromptInteraction] useEffect: Accordion initialisiert (hasOptional:', hasOptional, ')');
-
     } else {
-      // console.log('[usePromptInteraction] useEffect: Keine promptData oder semanticDataInfo vorhanden, überspringe Initialisierung der Placeholder.');
-      setPlaceholderValues({}); // Sicherstellen, dass es leer ist
+      setPlaceholderValues({});
     }
-
-    // --- DEBUG LOG: useEffect Ende ---
-    // console.log('[usePromptInteraction] useEffect für Initialisierung beendet.');
-
-  }, [promptData, slug, resetInteraction, semanticDataInfo]); // semanticDataInfo hinzugefügt
+  }, [promptData, slug, resetInteraction]);
 
   // --- Handler für Input-Änderungen ---
   const handleInputChange = useCallback((key, value) => {
-    // console.log(`[usePromptInteraction] handleInputChange: key=${key}, value=${value}`);
     setPlaceholderValues(prev => {
       const newState = { ...prev };
-      if (key.includes('.')) {
-        return setNestedValue(newState, key, value);
-      } else {
+      if (typeof key === 'string') {
         newState[key] = value;
         return newState;
       }
+      return prev; // Return previous state if key is not a string
     });
   }, []);
 
-  // --- Handler für Tonalität (ANGEPASST) ---
-  const handleToneInputChange = useCallback((e) => {
-    const value = e.target.value;
-    setSelectedTone(value);
-    setShowToneSuggestions(value.trim().length > 0);
-    // --- NEU: Wenn ins Textfeld getippt wird, Style-Tags zurücksetzen ---
-    if (value.trim().length > 0 && selectedStyleTags.length > 0) {
-      console.log("[handleToneInputChange] Text eingegeben, setze Style-Tags zurück.");
-      setSelectedStyleTags([]);
-    }
-    // --- ENDE NEU ---
-  }, [selectedStyleTags]); // selectedStyleTags als Abhängigkeit hinzugefügt
-
-  const handleToneSuggestionClick = useCallback((tone) => {
-    setSelectedTone(tone);
-    setShowToneSuggestions(false);
-    toneInputRef.current?.blur();
-    // --- NEU: Auch bei Suggestion-Klick Style-Tags zurücksetzen ---
-    if (selectedStyleTags.length > 0) {
-        console.log("[handleToneSuggestionClick] Suggestion geklickt, setze Style-Tags zurück.");
-        setSelectedStyleTags([]);
-    }
-    // --- ENDE NEU ---
-  }, [selectedStyleTags]); // selectedStyleTags als Abhängigkeit hinzugefügt
-
-  // --- Handler für Style-Tags (ANGEPASST) ---
-  const handleStyleTagClick = useCallback((tag) => {
-    setSelectedStyleTags(prev => {
-        const isCurrentlySelected = prev.includes(tag);
-        const newTags = isCurrentlySelected ? prev.filter(t => t !== tag) : [...prev, tag];
-
-        // --- NEU: Wenn ein Tag (de-)selektiert wird, Textfeld leeren ---
-        if (selectedTone.trim().length > 0) {
-            console.log("[handleStyleTagClick] Tag geklickt, leere Textfeld.");
-            setSelectedTone(''); // Textfeld leeren
-            setShowToneSuggestions(false); // Auch Suggestions ausblenden
-        }
-        // --- ENDE NEU ---
-
-        return newTags;
-    });
-  }, [selectedTone]); // selectedTone als Abhängigkeit hinzugefügt
-
-
-  // --- Tonalitätsvorschläge ---
+  // --- Tonalitätsvorschläge (bleibt für Sprachlevel) ---
   const toneSuggestions = useMemo(() => {
-    const langLevelOptions = semanticDataInfo?.language_level?.options;
+    const langLevelOptions = promptData?.semantic_data?.language_level?.options;
     if (Array.isArray(langLevelOptions)) {
       return langLevelOptions.map(opt => opt.label).filter(Boolean);
     }
-    return ["Locker", "Formell", "Herzlich", "Sachlich", "Empathisch"];
-  }, [semanticDataInfo]);
+    // Fallback entfernt, da nicht mehr direkt verwendet
+    return [];
+  }, [promptData]);
 
-  const filteredTones = useMemo(() => {
-    if (!selectedTone || selectedTone.trim() === '') {
-      return [];
+  // --- Klick außerhalb schließen (Tone Suggestions - nicht mehr benötigt) ---
+  // useEffect(() => {
+  //   const handleClickOutside = (event) => {
+  //     if (toneInputRef.current && !toneInputRef.current.contains(event.target)) {
+  //       setShowToneSuggestions(false);
+  //     }
+  //   };
+  //   document.addEventListener('mousedown', handleClickOutside);
+  //   return () => document.removeEventListener('mousedown', handleClickOutside);
+  // }, []);
+
+  // --- Handler für Textauswahl ---
+  const handleTextSelection = useCallback((event) => {
+    if (!event || !event.target || !textOutputRef.current) {
+      return;
     }
-    const lowerCaseInput = selectedTone.toLowerCase();
-    return toneSuggestions.filter(tone =>
-      tone.toLowerCase().includes(lowerCaseInput) && tone.toLowerCase() !== lowerCaseInput
-    );
-  }, [selectedTone, toneSuggestions]);
-
-  // --- Klick außerhalb schließen (Tone Suggestions) ---
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (toneInputRef.current && !toneInputRef.current.contains(event.target)) {
-        setShowToneSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-
-  // --- Handler für Textauswahl (Verwendet Maus-Koordinaten) ---
-  const handleTextSelection = useCallback((event) => { // event als Parameter
-    // console.log("[handleTextSelection] MouseUp-Event ausgelöst.");
-
-    // --- Event-Ziel prüfen ---
-    if (!event || !event.target) {
-        console.error("[handleTextSelection] FEHLER: Kein Event-Objekt oder event.target verfügbar!");
-        return;
-    }
-    // console.log("[handleTextSelection] Event Target:", event.target);
-    // console.log("[handleTextSelection] Maus-Koordinaten (clientX, clientY):", event.clientX, event.clientY);
-    // --- ENDE Event-Ziel prüfen ---
-
     const selection = window.getSelection();
     const selectedText = selection?.toString().trim();
-    // console.log("[handleTextSelection] Rohauswahl:", selection?.toString());
-    // console.log("[handleTextSelection] Getrimmter Text:", selectedText);
-
-    // --- Prüfung, ob textOutputRef existiert ---
-    if (!textOutputRef.current) {
-        console.error("[handleTextSelection] FEHLER: textOutputRef.current ist nicht verfügbar!");
-        return;
-    }
-    // --- ENDE Prüfung ---
-
-    // --- Prüfung über event.target ---
-    let isInTextarea = false;
-    try {
-        isInTextarea = textOutputRef.current.contains(event.target);
-        // console.log("[handleTextSelection] Prüfe, ob event.target im Textarea-Ref:", isInTextarea);
-    } catch (e) {
-        console.error("[handleTextSelection] Fehler bei .contains Prüfung (event.target):", e);
-        isInTextarea = false;
-    }
-    // --- ENDE Prüfung ---
+    const isInTextarea = textOutputRef.current.contains(event.target);
 
     if (selectedText && isInTextarea) {
-      // console.log("[handleTextSelection] Bedingungen erfüllt: Text vorhanden UND mouseup-Event im Textarea.");
-
-      // --- Speichere Maus-Koordinaten ---
       setSelectedTextData({
           text: selectedText,
-          clientX: event.clientX, // X-Koordinate des Mauszeigers relativ zum Viewport
-          clientY: event.clientY  // Y-Koordinate des Mauszeigers relativ zum Viewport
+          clientX: event.clientX,
+          clientY: event.clientY
       });
-      setShowTextActions(true); // Popover anzeigen (wird durch onOpenChange gesteuert)
-      // console.log("[handleTextSelection] States gesetzt: showTextActions=true, selectedTextData mit clientX/Y aktualisiert.");
-      // --- ENDE ---
-
-    } else if (!selectedText && showTextActions) {
-      // Wenn keine Auswahl mehr da ist, Popover schließen (wird durch onOpenChange behandelt)
-      // console.log("[handleTextSelection] Keine Auswahl mehr, schließe Popover (via onOpenChange).");
-    } else {
-        // Log, warum Popover nicht gezeigt wird
-        // console.log("[handleTextSelection] Bedingungen NICHT erfüllt. Popover wird nicht angezeigt.", { hasSelectedText: !!selectedText, isSelectionInTextarea: isInTextarea });
+      setShowTextActions(true);
     }
-  }, [showTextActions, textOutputRef]); // Abhängigkeiten bleiben gleich
+  }, [textOutputRef]); // showTextActions entfernt, da es durch onOpenChange gesteuert wird
 
-
-  // --- NEU: Handler für Popover Open/Close ---
+  // --- Handler für Popover Open/Close ---
   const handlePopoverOpenChange = useCallback((open) => {
-      // console.log("[handlePopoverOpenChange] Zustand ändert sich auf:", open);
-      setShowTextActions(open); // Zustand synchronisieren
+      setShowTextActions(open);
       if (!open) {
-          // Wenn das Popover geschlossen wird, Koordinaten zurücksetzen
-          // console.log("[handlePopoverOpenChange] Popover geschlossen, resette Koordinaten.");
-          setSelectedTextData(prev => ({ ...prev, text: '', clientX: null, clientY: null })); // Auch Text zurücksetzen
+          setSelectedTextData(prev => ({ ...prev, text: '', clientX: null, clientY: null }));
       }
-  }, []); // Keine Abhängigkeiten nötig, da nur Setter verwendet werden
-  // --- ENDE NEU ---
-
+  }, []);
 
   // --- Handler für Aktionen (Copy, Share) ---
   const handleCopy = useCallback(async () => {
@@ -330,14 +169,8 @@ export function usePromptInteraction(promptData, slug) {
     }
   }, [generatedText, promptData]);
 
-
   // --- API Calls (generateText, refineText) ---
   const callGenerateAPI = useCallback(async (instruction = null) => {
-    // console.log('[usePromptInteraction] callGenerateAPI aufgerufen. Instruction:', instruction);
-    // console.log('[usePromptInteraction] Aktuelle placeholderValues:', placeholderValues);
-    // console.log('[usePromptInteraction] Aktueller selectedTone:', selectedTone);
-    // console.log('[usePromptInteraction] Aktuelle selectedStyleTags:', selectedStyleTags);
-
     const isRefineCall = instruction !== null;
     if (isRefineCall) {
       setIsRefining(true);
@@ -347,32 +180,34 @@ export function usePromptInteraction(promptData, slug) {
     setErrorMsg('');
     setDocxError('');
 
+    // setActiveQuickTone(null); // <-- VERSCHOBEN: Reset erst nach erfolgreichem API Call oder bei neuem Generate
     const payload = {
       placeholders: placeholderValues,
-      tone: selectedTone, // Wird jetzt korrekt geleert oder gesetzt
       slug: slug,
-      styleTags: selectedStyleTags, // Wird jetzt korrekt geleert oder gesetzt
       ...(isRefineCall && {
         originalText: generatedText,
         refineInstruction: instruction,
       }),
     };
 
-    // console.log('[usePromptInteraction] Sende Payload an API:', payload);
-
     try {
       const result = isRefineCall
         ? await refineText(payload)
         : await generateText(payload);
-
-      // console.log('[usePromptInteraction] Antwort von API erhalten:', result);
 
       if (result.error) {
         throw new Error(result.error);
       }
 
       if (result.text !== undefined) {
-        setGeneratedText(result.text);
+        let cleanedGeneratedText = result.text.trim();
+        cleanedGeneratedText = cleanedGeneratedText.replace(/^(["“”])(.*)\1$/s, '$2');
+        cleanedGeneratedText = cleanedGeneratedText.trim();
+        setGeneratedText(cleanedGeneratedText);
+        // Reset active tone only if it wasn't a quick tone button click that initiated this
+        // We handle the active state *before* calling in handleQuickToneChange
+        // If it's a normal generate/rephrase/refine, reset the quick tone button visually
+        // setActiveQuickTone(null); // <-- Überlegen: Besser im Handler?
       } else {
         throw new Error("Kein Text von der API erhalten.");
       }
@@ -380,37 +215,49 @@ export function usePromptInteraction(promptData, slug) {
       console.error("Fehler bei API-Aufruf:", err);
       setErrorMsg(err.message || "Ein Fehler ist aufgetreten.");
     } finally {
-      // console.log('[usePromptInteraction] callGenerateAPI finally Block. Setze Ladezustand zurück.');
       if (isRefineCall) {
         setIsRefining(false);
       } else {
         setLoading(false);
       }
     }
-  }, [slug, placeholderValues, selectedTone, generatedText, selectedStyleTags]);
-
+  }, [slug, placeholderValues, generatedText]);
 
   // --- Handler für Generieren/Verfeinern ---
-  const handleInitialGenerate = useCallback(() => callGenerateAPI(), [callGenerateAPI]);
-  const handleRephrase = useCallback(() => callGenerateAPI('Formuliere den Text neu.'), [callGenerateAPI]);
-  const handleToggleRefineInput = useCallback(() => setShowRefineInput(prev => !prev), []);
-  const handleRefine = useCallback(() => { if (additionalInfo.trim()) callGenerateAPI(additionalInfo); }, [callGenerateAPI, additionalInfo]);
-  const handleGetToThePoint = useCallback(() => callGenerateAPI('Formuliere den Text deutlich kürzer und direkter, ohne an Höflichkeit zu verlieren. Konzentriere dich auf die Kernbotschaft.'), [callGenerateAPI]);
+  const handleInitialGenerate = useCallback(() => {
+      setActiveQuickTone(null); // Reset bei komplett neuer Generierung
+      callGenerateAPI();
+  }, [callGenerateAPI]);
 
+  const handleRephrase = useCallback(() => {
+      setActiveQuickTone(null); // Reset bei allgemeinem "Neu formulieren"
+      callGenerateAPI('Formuliere den Text neu.');
+  }, [callGenerateAPI]);
+
+  const handleToggleRefineInput = useCallback(() => setShowRefineInput(prev => !prev), []);
+
+  const handleRefine = useCallback(() => {
+      if (additionalInfo.trim()) {
+          setActiveQuickTone(null); // Reset bei benutzerdefinierter Anweisung
+          callGenerateAPI(additionalInfo);
+      }
+  }, [callGenerateAPI, additionalInfo]);
+
+  // --- NEU: Handler für Quick Tone Buttons ---
+  const handleQuickToneChange = useCallback((toneKey, instruction) => {
+    setActiveQuickTone(toneKey); // Setze den aktiven Button *vor* dem API-Aufruf
+    callGenerateAPI(instruction);
+  }, [callGenerateAPI]);
 
   // --- Handler für kontextbezogene Textaktionen ---
   const handleTextAction = useCallback(async (actionType) => {
-    // Prüfe auf clientX/Y statt rect
     if (!selectedTextData.text || !generatedText || selectedTextData.clientX == null || selectedTextData.clientY == null) {
-      console.warn("handleTextAction aufgerufen ohne ausgewählten Text, generierten Text oder Koordinaten.");
       return;
     }
-
     const originalSelection = selectedTextData.text;
-    // console.log("[handleTextAction] Aktion gestartet:", actionType, "Originalauswahl:", originalSelection);
-
     setIsModifyingSelection(true);
     setErrorMsg('');
+    setActiveQuickTone(null); // Reset bei Text-Aktion
 
     const payload = {
       selectedText: originalSelection,
@@ -419,61 +266,41 @@ export function usePromptInteraction(promptData, slug) {
       slug: slug,
     };
 
-    // console.log("[handleTextAction] Sende Payload an refineSelection:", payload);
-
     try {
       const result = await refineSelection(payload);
-      // console.log("[handleTextAction] Antwort von refineSelection:", result);
-
-      if (result.error) {
-        throw new Error(result.error);
-      }
+      if (result.error) throw new Error(result.error);
 
       if (result.modifiedText !== undefined) {
-        // console.log("[handleTextAction] Modifizierter Text erhalten:", result.modifiedText);
-        setGeneratedText(prevText => {
-            const newText = prevText.replace(originalSelection, result.modifiedText);
-            // console.log("[handleTextAction] Text ersetzt. Vorher:", prevText.substring(0, 100) + "...", "Nachher:", newText.substring(0, 100) + "...");
-            return newText;
-        });
+        let cleanedModifiedText = result.modifiedText.trim();
+        cleanedModifiedText = cleanedModifiedText.replace(/^(["“”])(.*)\1$/s, '$2');
+        cleanedModifiedText = cleanedModifiedText.trim();
+        setGeneratedText(prevText => prevText.replace(originalSelection, cleanedModifiedText));
       } else {
         throw new Error("Kein modifizierter Text von der API erhalten.");
       }
-
     } catch (err) {
       console.error("Fehler bei handleTextAction:", err);
       setErrorMsg(err.message || "Fehler bei der Textmodifikation.");
     } finally {
-      // console.log("[handleTextAction] Aktion beendet, setze isModifyingSelection auf false.");
       setIsModifyingSelection(false);
+      // Popover nach Aktion schließen (wird durch onOpenChange gehandhabt)
+      // setShowTextActions(false);
+      // setSelectedTextData({ text: '', clientX: null, clientY: null });
     }
   }, [selectedTextData, generatedText, slug]);
-
 
   // --- Handler für E-Mail Senden ---
   const handleSendEmail = useCallback(async () => {
     if (!recipientEmail || !generatedText) return;
-
     setIsSendingEmail(true);
     setSendEmailError('');
     setSendEmailSuccess(false);
-
     const subject = `Dein Text von PromptHaus: ${promptData?.name || 'Generierter Text'}`;
     const textBody = `Hallo,\n\nhier ist der Text, der mit PromptHaus generiert wurde:\n\n---\n${generatedText}\n---\n\nViele Grüße,\nDein PromptHaus Team`;
     const htmlBody = `<p>Hallo,</p><p>hier ist der Text, der mit PromptHaus generiert wurde:</p><hr><p style="white-space: pre-wrap;">${generatedText}</p><hr><p>Viele Grüße,<br>Dein PromptHaus Team</p>`;
-
     try {
-      const result = await sendEmailApi({
-        to: recipientEmail,
-        subject: subject,
-        textBody: textBody,
-        htmlBody: htmlBody,
-      });
-
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
+      const result = await sendEmailApi({ to: recipientEmail, subject, textBody, htmlBody });
+      if (result.error) throw new Error(result.error);
       setSendEmailSuccess(true);
     } catch (err) {
       console.error("Fehler beim Senden der E-Mail:", err);
@@ -483,65 +310,101 @@ export function usePromptInteraction(promptData, slug) {
     }
   }, [recipientEmail, generatedText, promptData?.name]);
 
-
   // --- Handler für DOCX Download ---
   const handleDownloadDocx = useCallback(async () => {
     if (!generatedText) return;
-
     setIsDownloadingDocx(true);
     setDocxError('');
-
     try {
-      const paragraphs = generatedText.split('\n').map(line =>
-        new Paragraph({
-          children: [new TextRun(line)],
-        })
-      );
-
-      const doc = new Document({
-        sections: [{
-          properties: {},
-          children: paragraphs,
-        }],
+      const baseFilename = slug || 'generierter-text';
+      const dateSuffix = new Date().toISOString().split('T')[0];
+      const filename = `${baseFilename}_${dateSuffix}.docx`;
+      const response = await fetch('/api/generate-docx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: generatedText, filename }),
       });
-
-      const blob = await Packer.toBlob(doc);
-      const fileName = `${slug || 'generierter-text'}_${new Date().toISOString().split('T')[0]}.docx`;
-      saveAs(blob, fileName);
-
+      if (!response.ok) {
+        let errorData;
+        try { errorData = await response.json(); }
+        catch (e) { errorData = { error: `Serverfehler: ${response.statusText} (Status ${response.status})` }; }
+        throw new Error(errorData.error || 'Unbekannter Serverfehler beim DOCX-Download.');
+      }
+      const blob = await response.blob();
+      saveAs(blob, filename);
     } catch (err) {
-      console.error("Fehler beim Erstellen/Herunterladen der DOCX-Datei:", err);
-      setDocxError("Fehler beim Erstellen der DOCX-Datei.");
+      console.error("Fehler beim Anfordern/Herunterladen der DOCX-Datei:", err);
+      setDocxError(err.message || "Fehler beim Erstellen/Herunterladen der DOCX-Datei.");
     } finally {
       setIsDownloadingDocx(false);
     }
   }, [generatedText, slug]);
 
-
-  // --- Kombinierter Ladezustand für UI-Deaktivierung ---
+  // --- Kombinierter Ladezustand ---
   const isBusy = loading || isRefining || isDownloadingDocx || isModifyingSelection;
 
+  // --- NEU: Gruppiere semantic_data mit Sortierung nach 'order' ---
+  const groupedSemanticData = useMemo(() => {
+    if (!promptData?.semantic_data) return []; // Gib ein leeres Array zurück, wenn keine Daten vorhanden sind
+    const groups = {};
+    Object.entries(promptData.semantic_data).forEach(([key, field]) => {
+      const groupName = field.group || 'Weitere Angaben';
+      const fieldOrder = typeof field.order === 'number' ? field.order : Infinity;
+      if (!groups[groupName]) {
+        groups[groupName] = {
+          fields: [],
+          order: Infinity,
+          isCollapsible: false,
+          key: groupName, // Füge den Gruppennamen als Schlüssel hinzu
+        };
+      }
+      groups[groupName].fields.push({ key, ...field, order: fieldOrder });
+      if (groupName === 'Zusätzliche Angaben') {
+         groups[groupName].isCollapsible = true;
+      }
+    });
+
+    Object.values(groups).forEach(group => {
+      group.fields.sort((a, b) => {
+        if (a.order !== b.order) return a.order - b.order;
+        const optionalA = a.optional === true;
+        const optionalB = b.optional === true;
+        if (optionalA !== optionalB) return optionalA ? 1 : -1;
+        return a.key.localeCompare(b.key);
+      });
+      group.order = Math.min(group.order, ...group.fields.map(f => f.order));
+    });
+
+    const sortedGroupEntries = Object.entries(groups).sort(([, groupA], [, groupB]) => {
+        if (groupA.order !== groupB.order) {
+            return groupA.order - groupB.order;
+        }
+        return groupA.key.localeCompare(groupB.key); // Fallback: Alphabetisch nach Gruppenname
+    });
+    return sortedGroupEntries; // Gib das sortierte Array zurück
+  }, [promptData]);
+  // --- ENDE NEU: Gruppierung ---
 
   // --- Rückgabewerte des Hooks ---
   return {
     // States
-    semanticDataInfo, placeholderValues, selectedTone, generatedText, loading, errorMsg,
-    isCopied, canShare, showRefineInput, additionalInfo, isRefining, filteredTones,
-    showToneSuggestions, toneInputRef, showEmailDialog, recipientEmail, isSendingEmail,
-    sendEmailError, sendEmailSuccess, accordionValue, isDownloadingDocx, docxError,
-    selectedStyleTags, selectedTextData, showTextActions, textOutputRef,
+    placeholderValues, generatedText, loading, errorMsg,
+    isCopied, canShare, showRefineInput, additionalInfo, isRefining,
+    showEmailDialog, recipientEmail, isSendingEmail,
+    sendEmailError, sendEmailSuccess, isDownloadingDocx, docxError,
+    selectedTextData, showTextActions, textOutputRef, activeQuickTone, accordionValue, // <-- accordionValue hinzugefügt
     isModifyingSelection,
-
     // Computed Values
     promptData,
     isBusy,
-
+    groupedSemanticData, // <-- Gruppierte und sortierte Daten hinzufügen
     // Setters & Handlers
-    handleInputChange, handleToneInputChange, handleToneSuggestionClick, handleStyleTagClick,
+    handleInputChange,
     handleCopy, handleWebShare, handleInitialGenerate, handleRephrase, handleToggleRefineInput,
-    handleRefine, handleGetToThePoint, setShowEmailDialog, setRecipientEmail, handleSendEmail,
-    setAccordionValue, handleDownloadDocx, getNestedValue, toneSuggestions, setAdditionalInfo,
-    setShowToneSuggestions, handleTextSelection,
+    handleRefine, setShowEmailDialog, setRecipientEmail, handleSendEmail,
+    handleDownloadDocx, toneSuggestions, setAdditionalInfo, setAccordionValue, // <-- setAccordionValue hinzugefügt
+    // setShowToneSuggestions, // Entfernt
+    handleTextSelection, handleQuickToneChange, // <-- handleQuickToneChange hinzugefügt
     handleTextAction,
     handlePopoverOpenChange,
   };

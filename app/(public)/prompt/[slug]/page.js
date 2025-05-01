@@ -1,7 +1,7 @@
 // app/(public)/prompt/[slug]/page.js
 "use client"; // Bleibt Client Component
 
-import { createClient } from '@/lib/supabase/client'; // Client-Import
+import { createClient } from '@/lib/supabase/client';
 import { notFound, useRouter, useParams } from 'next/navigation'; // useParams
 import PromptInteraction from '@/components/PromptInteraction';
 import React, { useState, useEffect } from 'react'; // useState, useEffect
@@ -15,14 +15,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Alert
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const FREE_PROMPT_SLUG = process.env.NEXT_PUBLIC_FREE_PROMPT_SLUG || 'testprompt'; // Verwende NEXT_PUBLIC_
 
 export default function PromptDetailPage() {
   const params = useParams();
   const slug = params.slug;
-  const isTestPrompt = slug === FREE_PROMPT_SLUG;
   const router = useRouter();
 
   // --- States angepasst ---
@@ -31,6 +30,7 @@ export default function PromptDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
+  const [isTestPrompt, setIsTestPrompt] = useState(false); // State für Test-Prompt-Status
 
   // --- Datenabfrage im useEffect (ANGEPASST) ---
   useEffect(() => {
@@ -38,6 +38,7 @@ export default function PromptDetailPage() {
       setIsLoading(true);
       setError(null);
       setPromptPackage(null); // Zurücksetzen für neuen Ladevorgang
+      setIsTestPrompt(slug === FREE_PROMPT_SLUG); // Setze Test-Prompt-Status
       const supabase = createClient();
 
       // 1. User holen (bleibt gleich)
@@ -48,8 +49,8 @@ export default function PromptDetailPage() {
         console.error("User fetch error:", userError);
       }
 
-      // Redirect, falls nicht eingeloggt und nicht Testprompt (bleibt gleich)
-      if (!userData && !isTestPrompt) {
+      // Redirect, falls nicht eingeloggt und nicht Testprompt
+      if (!userData && slug !== FREE_PROMPT_SLUG) {
         router.replace(
           `/login?message=Bitte melde dich an, um diesen Prompt zu nutzen.&next=/prompt/${slug}`
         );
@@ -59,7 +60,7 @@ export default function PromptDetailPage() {
       try {
         // 2. Paket holen (inkl. Prompt-Daten)
         const { data: pkgData, error: pkgError } = await supabase
-          .from('prompt_packages')
+          .from('prompt_packages') // Tabelle bleibt gleich
           // --- NEU: Lade alle benötigten Spalten ---
           .select(`
               id, name, slug, description, category, price,
@@ -106,7 +107,7 @@ export default function PromptDetailPage() {
        notFound(); // Slug fehlt, also nicht gefunden
     }
 
-  }, [slug, isTestPrompt, router]); // Abhängigkeiten
+  }, [slug, router]); // Abhängigkeit isTestPrompt entfernt, da es jetzt State ist
 
   // --- Ladezustand (bleibt gleich) ---
   if (isLoading) {
@@ -128,6 +129,7 @@ export default function PromptDetailPage() {
              <AlertDescription>
                {error}. Bitte versuche es später erneut oder kontaktiere den Support.
                <div className="mt-4">
+                  {/* Dieser Button verwendet auch asChild, aber <Link> ist ein einzelnes Kind */}
                   <Button variant="outline" size="sm" asChild>
                      <Link href="/">Zur Startseite</Link>
                   </Button>
@@ -138,7 +140,7 @@ export default function PromptDetailPage() {
      );
   }
 
-   // --- Fallback für "Nicht gefunden" (sollte durch notFound() im useEffect abgedeckt sein) ---
+   // --- Fallback für "Nicht gefunden" ---
    if (!promptPackage) {
      notFound();
    }
@@ -149,46 +151,51 @@ export default function PromptDetailPage() {
   return (
     <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <div className="mb-6">
-        <Button variant="outline" size="sm" asChild>
+        {/* --- KORREKTUR: Sicherstellen, dass der Inhalt des Links in EINEM Span ist --- */}
+        <Button variant="outline" size="sm" asChild className="flex items-center">
           <Link href={isTestPrompt ? '/' : user ? '/meine-prompts' : '/'}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Zurück{' '}
-            {isTestPrompt
-              ? 'zur Startseite'
-              : user
-              ? 'zu meinen Prompts'
-              : 'zur Startseite'}
+            <span> {/* Dieses Span umschließt ALLES innerhalb des Links */}
+              <ArrowLeft className="mr-2 h-4 w-4 inline" /> {/* inline hinzugefügt, falls nötig */}
+              Zurück{' '}
+              {isTestPrompt
+                ? 'zur Startseite'
+                : user
+                ? 'zu meinen Prompts'
+                : 'zur Startseite'}
+            </span>
           </Link>
         </Button>
+        {/* --- ENDE KORREKTUR --- */}
       </div>
 
+      {/* --- NEU: Titel und Beschreibung wieder hinzugefügt --- */}
+      <div className="mb-8 text-center">
+        <h1 className="text-2xl font-bold mb-2">{name}</h1>
+      </div>
+      {/* --- ENDE NEU --- */}
+      {/* Card entfernt, da das Layout jetzt in PromptInteraction liegt
       <Card className="rounded-none sm:rounded-lg border-x-0 sm:border-x">
         <CardHeader className="px-4 sm:px-6">
           <CardTitle className="text-2xl">{name}</CardTitle>
-        </CardHeader>
-
-        {description && (
           <CardDescription className="text-center px-4 sm:px-6">
             {description}
           </CardDescription>
-        )}
+        </CardHeader>
 
         <CardContent className="pt-4 px-4 sm:px-6">
           {/* Fehleranzeige (falls z.B. Prompt-Daten unvollständig wären, wird jetzt im fetch abgefangen) */}
-          {error && (
+          {/* {error && (
              <Alert variant="destructive" className="mb-4">
                <AlertCircle className="h-4 w-4" />
                <AlertTitle>Fehler</AlertTitle>
                <AlertDescription>{error}</AlertDescription>
              </Alert>
-          )}
-
+          )} */}
           {/* --- PromptInteraction mit promptData aufrufen --- */}
-          {promptPackage ? (
+          {/* {promptPackage ? (
             <PromptInteraction
               promptData={promptPackage} // <-- Das gesamte Paket übergeben
               slug={slug}
-              // isTestPrompt wird nicht mehr benötigt, da die Logik im Hook ist
             />
           ) : (
             // Wird nur angezeigt, wenn kein Fehler, nicht geladen wird, aber Paket trotzdem null ist (sollte nicht passieren)
@@ -200,6 +207,27 @@ export default function PromptDetailPage() {
           )}
         </CardContent>
       </Card>
+      */}
+
+      {/* Direkte Übergabe an PromptInteraction */}
+      {/* Fehleranzeige (falls z.B. Prompt-Daten unvollständig wären, wird jetzt im fetch abgefangen) */}
+      {error && (
+         <Alert variant="destructive" className="mb-4">
+           <AlertCircle className="h-4 w-4" />
+           <AlertTitle>Fehler</AlertTitle>
+           <AlertDescription>{error}</AlertDescription>
+         </Alert>
+      )}
+
+      {/* --- PromptInteraction mit promptData aufrufen --- */}
+      {promptPackage ? (
+        <PromptInteraction
+          promptData={promptPackage} // <-- Das gesamte Paket übergeben
+          slug={slug}
+        />
+      ) : (
+        !isLoading && !error && <p className="text-center text-muted-foreground py-4">Prompt-Daten konnten nicht geladen werden.</p>
+      )}
     </div>
   );
 }
