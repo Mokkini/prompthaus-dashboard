@@ -118,7 +118,7 @@ export default async function LandingPage() {
                   <CreditCard size={48} className="mb-4 text-primary" />
                   <h3 className="text-xl font-semibold mb-2">2. Einmal kaufen, immer nutzen</h3>
                   <p className="text-muted-foreground">
-                    Keine Abo-Falle. Du bekommst sofort Zugriff auf alle Texte.
+                  Keine Abo-Falle. Du bekommst sofort Zugriff auf deine gekauften Texte.
                   </p>
                 </div>
                 <div className="flex flex-col items-center">

@@ -160,7 +160,7 @@ export default function PromptInteraction({ promptData, slug }) {
               <SelectContent>
                 {/* --- ENTFERNT: SelectItem mit value="" ist nicht erlaubt --- */}
                 {/* {!isRequired && !placeholder && <SelectItem value="">Keine Auswahl</SelectItem>} */}
-                {placeholder && <SelectItem value="" disabled>{placeholder}</SelectItem>}
+                {/* {placeholder && <SelectItem value="" disabled>{placeholder}</SelectItem>} */} {/* <-- DIESE ZEILE ENTFERNT */}
                 {selectOptions.map((option) => (
                   <SelectItem key={option.key || option.value} value={option.value}>
                     {option.label}
